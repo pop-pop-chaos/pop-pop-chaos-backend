@@ -1,0 +1,12 @@
+{
+  "name": "pop-pop-chaos",
+  "version": "1.0.0",
+  "description": "Pop Pop Chaos is a lighthearted, colorful game designed to foster human connection while offering a mix of casual observation and active participation. This project is a collaborative effort between you, the creator, and an AI assistant, working together to bring your vision to life.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
