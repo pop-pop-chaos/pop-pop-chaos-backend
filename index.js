@@ -306,20 +306,29 @@ const createBubbleWithTimer = (xPercent, yPercent, size, name = null) => {
       bubble.xPercent += bubble.dx;
       bubble.yPercent += bubble.dy;
 
-      // Get bubble radius as percentage (approximate based on size)
-      const bubbleRadius = Math.max(10, bubble.size) / 1000; // Convert pixels to percentage roughly
+      // Get the game area for the current socket context if available
+      // This is a bit of a hack since the bubble is global, not socket-specific.
+      // We'll just use the dimensions from the first socket that reports them.
+      // A better solution would be to have per-player physics.
+      const gameArea = (io.sockets.sockets.values().next().value)?.gameArea || { width: 1000, height: 600 };
+      const minDimension = Math.min(gameArea.width, gameArea.height);
+
+      // Calculate bubble radius as a percentage of the total game area width (a simplification)
+      const bubbleDiameter = (bubble.size / 1000) * minDimension;
+      const bubbleRadiusPercent = (bubbleDiameter / 2) / gameArea.width;
+
 
       // Check for boundary collisions and bounce
-      if (bubble.xPercent - bubbleRadius <= 0 || bubble.xPercent + bubbleRadius >= 1) {
+      if (bubble.xPercent - bubbleRadiusPercent <= 0 || bubble.xPercent + bubbleRadiusPercent >= 1) {
         bubble.dx = -bubble.dx; // Reverse x velocity
         // Keep bubble in bounds
-        bubble.xPercent = Math.max(bubbleRadius, Math.min(1 - bubbleRadius, bubble.xPercent));
+        bubble.xPercent = Math.max(bubbleRadiusPercent, Math.min(1 - bubbleRadiusPercent, bubble.xPercent));
       }
 
-      if (bubble.yPercent - bubbleRadius <= 0 || bubble.yPercent + bubbleRadius >= 1) {
+      if (bubble.yPercent - bubbleRadiusPercent <= 0 || bubble.yPercent + bubbleRadiusPercent >= 1) {
         bubble.dy = -bubble.dy; // Reverse y velocity
         // Keep bubble in bounds
-        bubble.yPercent = Math.max(bubbleRadius, Math.min(1 - bubbleRadius, bubble.yPercent));
+        bubble.yPercent = Math.max(bubbleRadiusPercent, Math.min(1 - bubbleRadiusPercent, bubble.yPercent));
       }
 
       // Update backward compatibility coordinates
@@ -413,8 +422,19 @@ app.get('/', (req, res) => {
 io.on('connection', (socket) => {
     console.log(`User connected: ${socket.id}`);
 
+    // Attach a gameArea object to the socket to store its dimensions
+    socket.gameArea = { width: 1000, height: 600 }; // Default values
+
+    // Handle game area resize events
+    socket.on('gameAreaResize', (data) => {
+        if (data && data.width && data.height) {
+            socket.gameArea = { width: data.width, height: data.height };
+            console.log(`[${socket.id}] Game area resized to: ${data.width}x${data.height}`);
+        }
+    });
+
     // Send current bubbles to newly connected client (without timer property)
-    const bubblesForClient = bubbles.map(({timer, movementTimer, ...bubble}) => bubble);
+    const bubblesForClient = bubbles.map(({airLossTimer, movementTimer, ...bubble}) => bubble);
     socket.emit('bubblesUpdate', {
         bubbles: bubblesForClient,
         reason: 'initial_sync'
