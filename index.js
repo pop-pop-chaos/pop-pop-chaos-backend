@@ -120,6 +120,65 @@ io.on('connection', (socket) => {
         });
     });
 
+    // God mode handlers for debugging
+    socket.on('godInflate', (data) => {
+        const bubble = bubbles.find(b => b.id === data.bubbleId);
+        if (bubble) {
+            bubble.size += data.amount;
+            console.log(`⚡ GOD INFLATE: ${bubble.name} +${data.amount} → ${bubble.size}`);
+
+            const bubblesForClient = bubbles.map(({timer, ...bubble}) => bubble);
+            io.emit('bubblesUpdate', {
+                bubbles: bubblesForClient,
+                reason: 'god_inflate'
+            });
+        }
+    });
+
+    socket.on('godDeflate', (data) => {
+        const bubble = bubbles.find(b => b.id === data.bubbleId);
+        if (bubble) {
+            bubble.size = Math.max(0, bubble.size - data.amount);
+            console.log(`⚡ GOD DEFLATE: ${bubble.name} -${data.amount} → ${bubble.size}`);
+
+            if (bubble.size <= 0) {
+                // Bubble popped - remove it
+                const bubbleIndex = bubbles.findIndex(b => b.id === bubble.id);
+                if (bubbleIndex !== -1) {
+                    clearTimeout(bubble.timer);
+                    bubbles.splice(bubbleIndex, 1);
+                    console.log(`💥 ${bubble.name} popped by god power! 💥`);
+                }
+            }
+
+            const bubblesForClient = bubbles.map(({timer, ...bubble}) => bubble);
+            io.emit('bubblesUpdate', {
+                bubbles: bubblesForClient,
+                reason: 'god_deflate'
+            });
+        }
+    });
+
+    socket.on('godPop', (data) => {
+        const bubble = bubbles.find(b => b.id === data.bubbleId);
+        if (bubble) {
+            console.log(`⚡💥 GOD POP: ${bubble.name} instantly destroyed! 💥⚡`);
+
+            // Remove bubble immediately
+            const bubbleIndex = bubbles.findIndex(b => b.id === bubble.id);
+            if (bubbleIndex !== -1) {
+                clearTimeout(bubble.timer);
+                bubbles.splice(bubbleIndex, 1);
+            }
+
+            const bubblesForClient = bubbles.map(({timer, ...bubble}) => bubble);
+            io.emit('bubblesUpdate', {
+                bubbles: bubblesForClient,
+                reason: 'god_pop'
+            });
+        }
+    });
+
     // Handle disconnection
     socket.on('disconnect', () => {
         console.log(`User disconnected: ${socket.id}`);
