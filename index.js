@@ -1,6 +1,8 @@
 const express = require('express');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 const server = createServer(app);
@@ -12,6 +14,51 @@ const io = new Server(server, {
 });
 
 const port = process.env.PORT || 8080;
+
+// Storage configuration
+const BUBBLES_FILE = path.join(__dirname, 'bubbles.json');
+
+// Storage functions
+const saveBubbles = () => {
+  try {
+    // Save bubbles without timer property
+    const bubblesForStorage = bubbles.map(({timer, ...bubble}) => bubble);
+    fs.writeFileSync(BUBBLES_FILE, JSON.stringify({
+      bubbles: bubblesForStorage,
+      nextBubbleId: nextBubbleId,
+      timestamp: new Date().toISOString()
+    }, null, 2));
+    console.log(`💾 Saved ${bubblesForStorage.length} bubbles to storage`);
+  } catch (error) {
+    console.error('Error saving bubbles:', error);
+  }
+};
+
+const loadBubbles = () => {
+  try {
+    if (fs.existsSync(BUBBLES_FILE)) {
+      const data = JSON.parse(fs.readFileSync(BUBBLES_FILE, 'utf8'));
+      console.log(`📂 Loading ${data.bubbles.length} bubbles from storage (saved: ${data.timestamp})`);
+
+      // Restore nextBubbleId
+      nextBubbleId = data.nextBubbleId || 1;
+
+      // Restore each bubble with new timer
+      data.bubbles.forEach(bubbleData => {
+        const bubble = createBubbleWithTimer(bubbleData.x, bubbleData.y, bubbleData.size, bubbleData.name);
+        // Override the auto-generated ID with the stored one
+        bubble.id = bubbleData.id;
+        bubbles.push(bubble);
+      });
+
+      console.log(`✅ Restored ${bubbles.length} bubbles with active timers`);
+      return true;
+    }
+  } catch (error) {
+    console.error('Error loading bubbles:', error);
+  }
+  return false;
+};
 
 // Track multiple bubbles
 let bubbles = [];
@@ -54,7 +101,8 @@ const createBubbleWithTimer = (x, y, size, name = null) => {
           startBubbleTimer();
         }
 
-        // Broadcast updated bubbles to all clients (without timer property)
+        // Save bubbles and broadcast updated bubbles to all clients
+        saveBubbles();
         const bubblesForClient = bubbles.map(({timer, ...bubble}) => bubble);
         io.emit('bubblesUpdate', {
           bubbles: bubblesForClient,
@@ -68,8 +116,12 @@ const createBubbleWithTimer = (x, y, size, name = null) => {
   return bubble;
 };
 
-// Create initial bubble for backward compatibility
-bubbles.push(createBubbleWithTimer(200, 150, 120, "Original Bubble"));
+// Load existing bubbles or create initial bubble
+if (!loadBubbles()) {
+  // No saved bubbles found, create initial bubble for backward compatibility
+  bubbles.push(createBubbleWithTimer(200, 150, 120, "Original Bubble"));
+  console.log("🫧 Created initial bubble");
+}
 
 // Individual timers handle air loss - no global timer needed!
 
@@ -97,7 +149,8 @@ io.on('connection', (socket) => {
             bubble.size++;
             console.log(`${bubble.name} clicked! New size: ${bubble.size}`);
 
-            // Broadcast updated bubbles to all connected clients (without timer property)
+            // Save and broadcast updated bubbles to all connected clients
+            saveBubbles();
             const bubblesForClient = bubbles.map(({timer, ...bubble}) => bubble);
             io.emit('bubblesUpdate', {
                 bubbles: bubblesForClient,
@@ -112,7 +165,8 @@ io.on('connection', (socket) => {
         bubbles.push(newBubble);
         console.log(`✨ New bubble "${newBubble.name}" created at (${data.x}, ${data.y}) ✨`);
 
-        // Broadcast updated bubbles to all connected clients (without timer property)
+        // Save and broadcast updated bubbles to all connected clients
+        saveBubbles();
         const bubblesForClient = bubbles.map(({timer, ...bubble}) => bubble);
         io.emit('bubblesUpdate', {
             bubbles: bubblesForClient,
@@ -127,6 +181,7 @@ io.on('connection', (socket) => {
             bubble.size += data.amount;
             console.log(`⚡ GOD INFLATE: ${bubble.name} +${data.amount} → ${bubble.size}`);
 
+            saveBubbles();
             const bubblesForClient = bubbles.map(({timer, ...bubble}) => bubble);
             io.emit('bubblesUpdate', {
                 bubbles: bubblesForClient,
@@ -151,6 +206,7 @@ io.on('connection', (socket) => {
                 }
             }
 
+            saveBubbles();
             const bubblesForClient = bubbles.map(({timer, ...bubble}) => bubble);
             io.emit('bubblesUpdate', {
                 bubbles: bubblesForClient,
@@ -171,6 +227,7 @@ io.on('connection', (socket) => {
                 bubbles.splice(bubbleIndex, 1);
             }
 
+            saveBubbles();
             const bubblesForClient = bubbles.map(({timer, ...bubble}) => bubble);
             io.emit('bubblesUpdate', {
                 bubbles: bubblesForClient,
