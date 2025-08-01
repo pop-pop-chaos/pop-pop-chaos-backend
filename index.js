@@ -5,6 +5,7 @@ const { createServer } = require('http');
 const { Server } = require('socket.io');
 const fs = require('fs');
 const path = require('path');
+const mysql = require('mysql2/promise');
 
 const app = express();
 const server = createServer(app);
@@ -16,6 +17,67 @@ const io = new Server(server, {
 });
 
 const port = process.env.PORT || 8080;
+
+// Database configuration
+let db = null;
+
+const initDatabase = async () => {
+  try {
+    db = await mysql.createConnection({
+      host: process.env.DB_HOST,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
+      port: process.env.DB_PORT || 3306
+    });
+
+    console.log(`🔌 Connected to MySQL database: ${process.env.DB_NAME}`);
+    return true;
+  } catch (error) {
+    console.error('❌ Database connection failed:', error.message);
+    return false;
+  }
+};
+
+const checkTableExists = async (tableName) => {
+  try {
+    const [rows] = await db.execute(
+      'SELECT COUNT(*) as count FROM information_schema.tables WHERE table_schema = ? AND table_name = ?',
+      [process.env.DB_NAME, tableName]
+    );
+    return rows[0].count > 0;
+  } catch (error) {
+    console.error(`Error checking table ${tableName}:`, error.message);
+    return false;
+  }
+};
+
+const ensureSchema = async () => {
+  const requiredTables = ['bubble_colors', 'bubbles', 'game_sessions', 'bubble_events'];
+  const missingTables = [];
+
+  console.log('🔍 Checking database schema...');
+
+  for (const table of requiredTables) {
+    const exists = await checkTableExists(table);
+    if (exists) {
+      console.log(`✅ Table exists: ${table}`);
+    } else {
+      console.log(`❌ Missing table: ${table}`);
+      missingTables.push(table);
+    }
+  }
+
+  if (missingTables.length > 0) {
+    console.log(`\n⚠️  Database setup incomplete!`);
+    console.log(`Missing tables: ${missingTables.join(', ')}`);
+    console.log(`Run: mysql -h ${process.env.DB_HOST} -u ${process.env.DB_USER} -p ${process.env.DB_NAME} < schema.sql`);
+    return false;
+  }
+
+  console.log('✅ Database schema is complete!');
+  return true;
+};
 
 // Storage configuration
 const BUBBLES_FILE = path.join(__dirname, 'bubbles.json');
@@ -118,12 +180,55 @@ const createBubbleWithTimer = (x, y, size, name = null) => {
   return bubble;
 };
 
-// Load existing bubbles or create initial bubble
-if (!loadBubbles()) {
-  // No saved bubbles found, create initial bubble for backward compatibility
-  bubbles.push(createBubbleWithTimer(200, 150, 120, "Original Bubble"));
-  console.log("🫧 Created initial bubble");
-}
+// Initialize storage based on STORAGE_MODE
+const initStorage = async () => {
+  const storageMode = process.env.STORAGE_MODE || 'file';
+  console.log(`📦 Storage mode: ${storageMode}`);
+
+  if (storageMode === 'mysql') {
+    console.log('🔄 Initializing MySQL storage...');
+
+    // Test database connection
+    const dbConnected = await initDatabase();
+    if (!dbConnected) {
+      console.log('⚠️  Falling back to file storage');
+      return initFileStorage();
+    }
+
+    // Check schema
+    const schemaReady = await ensureSchema();
+    if (!schemaReady) {
+      console.log('⚠️  Database schema incomplete, falling back to file storage');
+      return initFileStorage();
+    }
+
+    console.log('✅ MySQL storage ready!');
+    // TODO: Load bubbles from database
+    return true;
+
+  } else {
+    return initFileStorage();
+  }
+};
+
+const initFileStorage = () => {
+  console.log('📁 Using file storage');
+  // Load existing bubbles or create initial bubble
+  if (!loadBubbles()) {
+    // No saved bubbles found, create initial bubble for backward compatibility
+    bubbles.push(createBubbleWithTimer(200, 150, 120, "Original Bubble"));
+    console.log("🫧 Created initial bubble");
+  }
+  return true;
+};
+
+// Initialize storage
+initStorage().then(() => {
+  console.log('🚀 Storage initialization complete');
+}).catch(error => {
+  console.error('💥 Storage initialization failed:', error);
+  process.exit(1);
+});
 
 // Individual timers handle air loss - no global timer needed!
 
