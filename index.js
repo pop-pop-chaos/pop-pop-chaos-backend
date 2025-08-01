@@ -248,6 +248,10 @@ const SPEED_RANDOMNESS = 0.0005; // Speed variation
 const EXPLOSION_FORCE = 0.01; // The base strength of the push
 const EXPLOSION_RADIUS = 0.5; // The effect radius as a percentage of screen space (0.5 = 50%)
 
+// God powers configuration
+const GOD_INFLATE_AMOUNT = 10;
+const GOD_DEFLATE_AMOUNT = 10;
+
 // Helper function to create bubble with individual timer
 const createBubbleWithTimer = (xPercent, yPercent, size, name = null) => {
   // Generate random velocity for movement
@@ -515,8 +519,8 @@ io.on('connection', (socket) => {
         const bubbleIndex = bubbles.findIndex(b => b.id === data.bubbleId);
         if (bubbleIndex !== -1) {
             const bubble = bubbles[bubbleIndex];
-            bubble.size += data.amount;
-            console.log(`⚡ GOD INFLATE: ${bubble.name} +${data.amount} → ${bubble.size}`);
+            bubble.size += GOD_INFLATE_AMOUNT;
+            console.log(`⚡ GOD INFLATE: ${bubble.name} +${GOD_INFLATE_AMOUNT} → ${bubble.size}`);
 
             // Check if bubble should burst
             if (bubble.size > 1000) {
@@ -539,8 +543,8 @@ io.on('connection', (socket) => {
     socket.on('godDeflate', (data) => {
         const bubble = bubbles.find(b => b.id === data.bubbleId);
         if (bubble) {
-            bubble.size = Math.max(0, bubble.size - data.amount);
-            console.log(`⚡ GOD DEFLATE: ${bubble.name} -${data.amount} → ${bubble.size}`);
+            bubble.size = Math.max(0, bubble.size - GOD_DEFLATE_AMOUNT);
+            console.log(`⚡ GOD DEFLATE: ${bubble.name} -${GOD_DEFLATE_AMOUNT} → ${bubble.size}`);
 
             if (bubble.size <= 0) {
                 // Bubble popped - remove it
