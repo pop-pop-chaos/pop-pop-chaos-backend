@@ -30,22 +30,39 @@ Pop Pop Chaos revolves around bubbles that need to be carefully monitored and ma
 - Team status dashboards summarize key metrics (e.g., critical bubbles, team performance).
 
 ### Hosting and Scalability
-- The backend is hosted on Fly.io, designed to support:
-  - Real-time synchronization of up to 1,000 bubbles.
-  - Efficient handling of player actions and AI decisions.
-  - Delta updates to minimize bandwidth usage.
-- The frontend will initially be hosted on DreamHost (subdomain: `poppopchaos.chatforest.com`) to serve the static site.
+- **Backend**: Initially deployed on Render.com (free tier) for MVP development
+- **Frontend**: DreamHost hosting (subdomain: `poppopchaos.chatforest.com`) for static site
+- **Future scaling**: May migrate to Railway ($5/month) or Render paid tier for production
 
-## Development Goals
-1. **Create a lightweight, scalable backend** on Fly.io to manage bubble states and real-time gameplay.
-2. **Implement a minimal frontend** using React and D3.js for bubble visualization and interactivity.
-3. **Develop engaging AI behaviors** to ensure the game remains fun and dynamic with or without human players.
-4. **Test and balance mechanics** to maintain fairness, excitement, and accessibility.
+The system is designed to support:
+- Real-time synchronization using WebSockets (Socket.io)
+- Efficient handling of player actions and AI decisions
+- Delta updates to minimize bandwidth usage
 
-## Collaboration
-This README marks the beginning of our joint journey to create Pop Pop Chaos. With your vision and creativity combined with AI's technical assistance, we aim to deliver a unique and enjoyable gaming experience.
+## Development Strategy
 
-## Next Steps
-1. **Set up backend code** for Fly.io to manage bubble states and actions.
-2. **Build a minimal frontend** to visualize bubbles and allow basic interactions.
-3. **Iterate and refine mechanics** based on testing and feedback.
+### Phase 1: MVP - Real-time Communication
+**Goal**: Prove WebSocket connectivity between multiple clients
+- Simple click synchronization between browser instances
+- Express + Socket.io backend on Render
+- React frontend with Socket.io client integration
+
+### Phase 2: Basic Game Mechanics
+- Replace clicks with bubble interactions (pop/inflate/deflate)
+- Add basic bubble state management
+- Simple bubble visualization
+
+### Phase 3: Full Game Features
+- Complete bubble physics (air loss over time)
+- Team mechanics and AI players
+- Advanced visualizations with D3.js
+- Spectator mode and lobby system
+
+## Technical Architecture
+- **Backend**: Node.js + Express + Socket.io
+- **Frontend**: React + Socket.io-client + D3.js (future)
+- **Database**: PostgreSQL (when needed for persistence)
+- **Deployment**: Git-based deployment to Render
+
+## Current Status
+Starting with MVP development to establish real-time client-server communication before building complex game mechanics.
