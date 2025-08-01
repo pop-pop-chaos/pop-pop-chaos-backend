@@ -22,12 +22,13 @@ const BASE_AIR_LOSS_INTERVAL = 5000; // 5 seconds base
 const AIR_LOSS_RANDOMNESS = 2000; // +/- 2 seconds randomness
 
 // Helper function to create bubble with individual timer
-const createBubbleWithTimer = (x, y, size) => {
+const createBubbleWithTimer = (x, y, size, name = null) => {
   const bubble = {
     id: nextBubbleId++,
     x: x,
     y: y,
     size: size,
+    name: name || `Bubble ${nextBubbleId - 1}`, // default name if none provided
     timer: null
   };
 
@@ -38,7 +39,7 @@ const createBubbleWithTimer = (x, y, size) => {
     bubble.timer = setTimeout(() => {
       if (bubble.size > 0) {
         bubble.size--;
-        console.log(`Air loss! Bubble ${bubble.id} shrunk to: ${bubble.size} (next in ${Math.round(randomInterval/1000)}s)`);
+        console.log(`Air loss! ${bubble.name} (ID: ${bubble.id}) shrunk to: ${bubble.size}`);
 
         if (bubble.size <= 0) {
           // Bubble popped - remove it
@@ -46,7 +47,7 @@ const createBubbleWithTimer = (x, y, size) => {
           if (bubbleIndex !== -1) {
             clearTimeout(bubble.timer);
             bubbles.splice(bubbleIndex, 1);
-            console.log(`Bubble ${bubble.id} popped!`);
+            console.log(`💥 ${bubble.name} popped! 💥`);
           }
         } else {
           // Schedule next air loss
@@ -68,7 +69,7 @@ const createBubbleWithTimer = (x, y, size) => {
 };
 
 // Create initial bubble for backward compatibility
-bubbles.push(createBubbleWithTimer(200, 150, 120));
+bubbles.push(createBubbleWithTimer(200, 150, 120, "Original Bubble"));
 
 // Individual timers handle air loss - no global timer needed!
 
@@ -94,7 +95,7 @@ io.on('connection', (socket) => {
         const bubble = bubbles.find(b => b.id === data.bubbleId);
         if (bubble) {
             bubble.size++;
-            console.log(`Bubble ${bubble.id} clicked! New size: ${bubble.size}`);
+            console.log(`${bubble.name} clicked! New size: ${bubble.size}`);
 
             // Broadcast updated bubbles to all connected clients (without timer property)
             const bubblesForClient = bubbles.map(({timer, ...bubble}) => bubble);
@@ -107,9 +108,9 @@ io.on('connection', (socket) => {
 
     // Handle create bubble events
     socket.on('createBubble', (data) => {
-        const newBubble = createBubbleWithTimer(data.x, data.y, 10); // start small
+        const newBubble = createBubbleWithTimer(data.x, data.y, 10, data.name); // start small
         bubbles.push(newBubble);
-        console.log(`New bubble ${newBubble.id} created at (${data.x}, ${data.y})`);
+        console.log(`✨ New bubble "${newBubble.name}" created at (${data.x}, ${data.y}) ✨`);
 
         // Broadcast updated bubbles to all connected clients (without timer property)
         const bubblesForClient = bubbles.map(({timer, ...bubble}) => bubble);
