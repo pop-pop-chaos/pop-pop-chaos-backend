@@ -152,9 +152,9 @@ const loadBubblesFromDB = async () => {
 
     // Convert database format to our bubble format
     rows.forEach(row => {
-      // Convert percentage positions back to pixels (assuming 400x300 game area)
-      const x = row.position_x * 400;
-      const y = row.position_y * 300;
+      // Convert percentage positions back to pixels (using 1000x600 game area)
+      const x = row.position_x * 1000;
+      const y = row.position_y * 600;
 
       const bubble = createBubbleWithTimer(x, y, row.size, row.name);
       bubble.id = row.bubble_id;
@@ -188,8 +188,8 @@ const saveBubblesToDB = async () => {
     // Insert or update current bubbles
     for (const bubble of bubbles) {
       // Convert pixel positions to percentages
-      const position_x = bubble.x / 400; // 400px game area width
-      const position_y = bubble.y / 300; // 300px game area height
+      const position_x = bubble.x / 1000; // 1000px game area width
+      const position_y = bubble.y / 600; // 600px game area height
 
       await db.execute(`
         INSERT INTO bubbles (bubble_id, name, size, position_x, position_y, color_id)
@@ -294,8 +294,8 @@ const initStorage = async () => {
     // Load existing bubbles from database
     const loaded = await loadBubblesFromDB();
     if (!loaded) {
-      // No bubbles in database, create initial bubble
-      bubbles.push(createBubbleWithTimer(200, 150, 120, "Original Database Bubble"));
+      // No bubbles in database, create initial bubble (centered in 1000x600 area)
+      bubbles.push(createBubbleWithTimer(500, 300, 120, "Original Database Bubble"));
       await saveBubblesToDB(); // Save the initial bubble
       console.log("🫧 Created initial bubble in database");
     }
@@ -311,8 +311,8 @@ const initFileStorage = () => {
   console.log('📁 Using file storage');
   // Load existing bubbles or create initial bubble
   if (!loadBubbles()) {
-    // No saved bubbles found, create initial bubble for backward compatibility
-    bubbles.push(createBubbleWithTimer(200, 150, 120, "Original Bubble"));
+    // No saved bubbles found, create initial bubble for backward compatibility (centered in 1000x600 area)
+    bubbles.push(createBubbleWithTimer(500, 300, 120, "Original Bubble"));
     console.log("🫧 Created initial bubble");
   }
   return true;
