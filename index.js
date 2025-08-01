@@ -442,10 +442,19 @@ io.on('connection', (socket) => {
 
     // Handle bubble click events
     socket.on('bubbleClick', (data) => {
-        const bubble = bubbles.find(b => b.id === data.bubbleId);
-        if (bubble) {
+        const bubbleIndex = bubbles.findIndex(b => b.id === data.bubbleId);
+        if (bubbleIndex !== -1) {
+            const bubble = bubbles[bubbleIndex];
             bubble.size++;
             console.log(`${bubble.name} clicked! New size: ${bubble.size}`);
+
+            // Check if bubble should burst
+            if (bubble.size > 1000) {
+                console.log(`💥 ${bubble.name} burst from over-inflation! 💥`);
+                clearTimeout(bubble.airLossTimer);
+                clearInterval(bubble.movementTimer);
+                bubbles.splice(bubbleIndex, 1);
+            }
 
             // Save and broadcast updated bubbles to all connected clients
             saveBubbles();
@@ -474,10 +483,19 @@ io.on('connection', (socket) => {
 
     // God mode handlers for debugging
     socket.on('godInflate', (data) => {
-        const bubble = bubbles.find(b => b.id === data.bubbleId);
-        if (bubble) {
+        const bubbleIndex = bubbles.findIndex(b => b.id === data.bubbleId);
+        if (bubbleIndex !== -1) {
+            const bubble = bubbles[bubbleIndex];
             bubble.size += data.amount;
             console.log(`⚡ GOD INFLATE: ${bubble.name} +${data.amount} → ${bubble.size}`);
+
+            // Check if bubble should burst
+            if (bubble.size > 1000) {
+                console.log(`💥 ${bubble.name} burst from god-powered over-inflation! 💥`);
+                clearTimeout(bubble.airLossTimer);
+                clearInterval(bubble.movementTimer);
+                bubbles.splice(bubbleIndex, 1);
+            }
 
             saveBubbles();
             const bubblesForClient = bubbles.map(({airLossTimer, movementTimer, ...bubble}) => bubble);
