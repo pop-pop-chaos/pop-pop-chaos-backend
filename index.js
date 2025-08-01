@@ -117,7 +117,19 @@ const loadBubbles = () => {
 
       // Restore each bubble with new timer
       data.bubbles.forEach(bubbleData => {
-        const bubble = createBubbleWithTimer(bubbleData.x, bubbleData.y, bubbleData.size, bubbleData.name);
+        // Handle transition from pixel coordinates to percentage coordinates
+        let xPercent, yPercent;
+        if (bubbleData.xPercent !== undefined && bubbleData.yPercent !== undefined) {
+          // New format: percentage coordinates
+          xPercent = bubbleData.xPercent;
+          yPercent = bubbleData.yPercent;
+        } else {
+          // Old format: convert pixel coordinates to percentages
+          xPercent = bubbleData.x / 1000;
+          yPercent = bubbleData.y / 600;
+        }
+
+        const bubble = createBubbleWithTimer(xPercent, yPercent, bubbleData.size, bubbleData.name);
         // Override the auto-generated ID with the stored one
         bubble.id = bubbleData.id;
         bubbles.push(bubble);
@@ -152,11 +164,11 @@ const loadBubblesFromDB = async () => {
 
     // Convert database format to our bubble format
     rows.forEach(row => {
-      // Convert percentage positions back to pixels (using 1000x600 game area)
-      const x = row.position_x * 1000;
-      const y = row.position_y * 600;
+      // Use percentage positions directly (they're already stored as 0-1 in database)
+      const xPercent = row.position_x;
+      const yPercent = row.position_y;
 
-      const bubble = createBubbleWithTimer(x, y, row.size, row.name);
+      const bubble = createBubbleWithTimer(xPercent, yPercent, row.size, row.name);
       bubble.id = row.bubble_id;
       bubble.color = row.color; // Add color property
       bubbles.push(bubble);
@@ -187,9 +199,9 @@ const saveBubblesToDB = async () => {
 
     // Insert or update current bubbles
     for (const bubble of bubbles) {
-      // Convert pixel positions to percentages
-      const position_x = bubble.x / 1000; // 1000px game area width
-      const position_y = bubble.y / 600; // 600px game area height
+      // Use percentage positions directly (already stored as 0-1)
+      const position_x = bubble.xPercent;
+      const position_y = bubble.yPercent;
 
       await db.execute(`
         INSERT INTO bubbles (bubble_id, name, size, position_x, position_y, color_id)
@@ -220,11 +232,14 @@ const BASE_AIR_LOSS_INTERVAL = 5000; // 5 seconds base
 const AIR_LOSS_RANDOMNESS = 2000; // +/- 2 seconds randomness
 
 // Helper function to create bubble with individual timer
-const createBubbleWithTimer = (x, y, size, name = null) => {
+const createBubbleWithTimer = (xPercent, yPercent, size, name = null) => {
   const bubble = {
     id: nextBubbleId++,
-    x: x,
-    y: y,
+    xPercent: xPercent, // Store as percentage (0-1)
+    yPercent: yPercent, // Store as percentage (0-1)
+    // Keep x,y for backward compatibility during transition
+    x: xPercent * 1000,
+    y: yPercent * 600,
     size: size,
     name: name || `Bubble ${nextBubbleId - 1}`, // default name if none provided
     timer: null
@@ -294,8 +309,8 @@ const initStorage = async () => {
     // Load existing bubbles from database
     const loaded = await loadBubblesFromDB();
     if (!loaded) {
-      // No bubbles in database, create initial bubble (centered in 1000x600 area)
-      bubbles.push(createBubbleWithTimer(500, 300, 120, "Original Database Bubble"));
+      // No bubbles in database, create initial bubble (centered at 50%, 50%)
+      bubbles.push(createBubbleWithTimer(0.5, 0.5, 120, "Original Database Bubble"));
       await saveBubblesToDB(); // Save the initial bubble
       console.log("🫧 Created initial bubble in database");
     }
@@ -311,8 +326,8 @@ const initFileStorage = () => {
   console.log('📁 Using file storage');
   // Load existing bubbles or create initial bubble
   if (!loadBubbles()) {
-    // No saved bubbles found, create initial bubble for backward compatibility (centered in 1000x600 area)
-    bubbles.push(createBubbleWithTimer(500, 300, 120, "Original Bubble"));
+    // No saved bubbles found, create initial bubble for backward compatibility (centered at 50%, 50%)
+    bubbles.push(createBubbleWithTimer(0.5, 0.5, 120, "Original Bubble"));
     console.log("🫧 Created initial bubble");
   }
   return true;
@@ -364,9 +379,9 @@ io.on('connection', (socket) => {
 
     // Handle create bubble events
     socket.on('createBubble', (data) => {
-        const newBubble = createBubbleWithTimer(data.x, data.y, 10, data.name); // start small
+        const newBubble = createBubbleWithTimer(data.xPercent, data.yPercent, 10, data.name); // start small
         bubbles.push(newBubble);
-        console.log(`✨ New bubble "${newBubble.name}" created at (${data.x}, ${data.y}) ✨`);
+        console.log(`✨ New bubble "${newBubble.name}" created at (${(data.xPercent * 100).toFixed(1)}%, ${(data.yPercent * 100).toFixed(1)}%) ✨`);
 
         // Save and broadcast updated bubbles to all connected clients
         saveBubbles();
