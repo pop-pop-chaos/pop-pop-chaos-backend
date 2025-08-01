@@ -245,11 +245,14 @@ const BASE_SPEED = 0.001; // Base movement speed (percentage per frame)
 const SPEED_RANDOMNESS = 0.0005; // Speed variation
 
 // Explosion configuration
-const EXPLOSION_FORCE = 0.01; // The base strength of the push
-const EXPLOSION_RADIUS = 0.5; // The effect radius as a percentage of screen space (0.5 = 50%)
+// Size-1000 bubble: force=0.1, radius=0.8
+// Size-100 bubble: force=0.01, radius=0.1
+const calculateExplosionForce = (bubbleSize) => (bubbleSize / 1000) * 0.1;
+const calculateExplosionRadius = (bubbleSize) => Math.min(0.8, Math.max(0.1, (bubbleSize / 1000) * 0.8));
+
 
 // God powers configuration
-const GOD_INFLATE_AMOUNT = 10;
+const GOD_INFLATE_AMOUNT = 100;
 const GOD_DEFLATE_AMOUNT = 10;
 
 // Helper function to create bubble with individual timer
@@ -359,7 +362,12 @@ const applyExplosionForce = (burstBubble) => {
   const burstCenterX = burstBubble.xPercent;
   const burstCenterY = burstBubble.yPercent;
 
-  console.log(`💥 Applying explosion force from ${burstBubble.name} at (${burstCenterX.toFixed(2)}, ${burstCenterY.toFixed(2)})`);
+  // Calculate explosion properties based on burst bubble size
+  const explosionForce = calculateExplosionForce(burstBubble.size);
+  const explosionRadius = calculateExplosionRadius(burstBubble.size);
+
+  console.log(`💥 Applying explosion from ${burstBubble.name} (size ${burstBubble.size}) at (${burstCenterX.toFixed(2)},
+  ${burstCenterY.toFixed(2)}) - Force: ${explosionForce.toFixed(3)}, Radius: ${explosionRadius.toFixed(2)}`);
 
   bubbles.forEach(otherBubble => {
     // Don't apply force to the bubble that just burst
@@ -374,23 +382,28 @@ const applyExplosionForce = (burstBubble) => {
     const distance = Math.sqrt(vectorX * vectorX + vectorY * vectorY);
 
     // If the bubble is outside the explosion radius, do nothing
-    if (distance > EXPLOSION_RADIUS || distance === 0) {
+    if (distance > explosionRadius || distance === 0) {
       return;
     }
 
     // Calculate the force magnitude with a linear falloff
     // The closer the bubble, the stronger the force
-    const forceMagnitude = (1 - (distance / EXPLOSION_RADIUS)) * EXPLOSION_FORCE;
+    const baseForceMagnitude = (1 - (distance / explosionRadius)) * explosionForce;
+
+    // Larger bubbles are less affected by explosions (mass resistance)
+    // Size-1000 bubble has resistance factor of 1.0, size-100 has 0.1, etc.
+    const resistanceFactor = Math.max(0.1, otherBubble.size / 1000);
+    const finalForceMagnitude = baseForceMagnitude / resistanceFactor;
 
     // Normalize the direction vector (to get a unit vector)
     const normalizedX = vectorX / distance;
     const normalizedY = vectorY / distance;
 
     // Apply the force to the other bubble's velocity
-    otherBubble.dx += normalizedX * forceMagnitude;
-    otherBubble.dy += normalizedY * forceMagnitude;
+    otherBubble.dx += normalizedX * finalForceMagnitude;
+    otherBubble.dy += normalizedY * finalForceMagnitude;
 
-    console.log(`  -> Pushing ${otherBubble.name}. Force: ${forceMagnitude.toFixed(4)}. New velocity: dx=${otherBubble.dx.toFixed(4)}, dy=${otherBubble.dy.toFixed(4)}`);
+    console.log(`  -> Pushing ${otherBubble.name}. Force: ${finalForceMagnitude.toFixed(4)}. New velocity: dx=${otherBubble.dx.toFixed(4)}, dy=${otherBubble.dy.toFixed(4)}`);
   });
 };
 
@@ -422,7 +435,7 @@ const initStorage = async () => {
     const loaded = await loadBubblesFromDB();
     if (!loaded) {
       // No bubbles in database, create initial bubble (centered at 50%, 50%)
-      bubbles.push(createBubbleWithTimer(0.5, 0.5, 120, "Original Database Bubble"));
+      bubbles.push(createBubbleWithTimer(0.5, 0.5, 120, "Most Honorable Reverend Bubberts Iglesias Jr 1-Aug-2025 (金)"));
       await saveBubblesToDB(); // Save the initial bubble
       console.log("🫧 Created initial bubble in database");
     }
