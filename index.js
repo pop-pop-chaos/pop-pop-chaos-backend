@@ -13,10 +13,19 @@ const io = new Server(server, {
 
 const port = process.env.PORT || 8080;
 
-// Track click count
-let clickCount = 0;
+// Track multiple bubbles
+let bubbles = [];
+let nextBubbleId = 1;
 
-// Air loss timer - bubble loses 1 click every 5 seconds
+// Create initial bubble for backward compatibility
+bubbles.push({
+  id: nextBubbleId++,
+  x: 200, // center of 400px wide game area
+  y: 150, // center of 300px tall game area
+  size: 120 // start with your current click count
+});
+
+// Air loss timer - all bubbles lose 1 size every 5 seconds
 const AIR_LOSS_INTERVAL = 5000; // 5 seconds
 let airLossTimer = null;
 
@@ -24,13 +33,29 @@ const startAirLoss = () => {
   if (airLossTimer) clearInterval(airLossTimer);
 
   airLossTimer = setInterval(() => {
-    if (clickCount > 0) {
-      clickCount--;
-      console.log(`Air loss! Bubble shrunk to: ${clickCount}`);
+    let bubblesChanged = false;
 
-      // Broadcast air loss to all clients
-      io.emit('clickUpdate', {
-        count: clickCount,
+    // Apply air loss to each bubble
+    bubbles.forEach(bubble => {
+      if (bubble.size > 0) {
+        bubble.size--;
+        bubblesChanged = true;
+        console.log(`Air loss! Bubble ${bubble.id} shrunk to: ${bubble.size}`);
+      }
+    });
+
+    // Remove bubbles that have shrunk to 0
+    const originalCount = bubbles.length;
+    bubbles = bubbles.filter(bubble => bubble.size > 0);
+    if (bubbles.length < originalCount) {
+      console.log(`${originalCount - bubbles.length} bubbles popped!`);
+      bubblesChanged = true;
+    }
+
+    if (bubblesChanged) {
+      // Broadcast updated bubbles to all clients
+      io.emit('bubblesUpdate', {
+        bubbles: bubbles,
         reason: 'air_loss'
       });
     }
@@ -42,28 +67,50 @@ startAirLoss();
 
 // Simple hello world route
 app.get('/', (req, res) => {
-    res.send(`Hello World! Welcome to Pop Pop Chaos Backend. Total clicks: ${clickCount}`);
+    const totalSize = bubbles.reduce((sum, bubble) => sum + bubble.size, 0);
+    res.send(`Hello World! Welcome to Pop Pop Chaos Backend. ${bubbles.length} bubbles, total size: ${totalSize}`);
 });
 
 // Socket.io connection handling
 io.on('connection', (socket) => {
     console.log(`User connected: ${socket.id}`);
 
-    // Send current click count to newly connected client
-    socket.emit('clickUpdate', {
-        count: clickCount,
+    // Send current bubbles to newly connected client
+    socket.emit('bubblesUpdate', {
+        bubbles: bubbles,
         reason: 'initial_sync'
     });
 
-    // Handle click events
-    socket.on('click', () => {
-        clickCount++;
-        console.log(`Click received! Total clicks: ${clickCount}`);
+    // Handle bubble click events
+    socket.on('bubbleClick', (data) => {
+        const bubble = bubbles.find(b => b.id === data.bubbleId);
+        if (bubble) {
+            bubble.size++;
+            console.log(`Bubble ${bubble.id} clicked! New size: ${bubble.size}`);
 
-        // Broadcast updated count to all connected clients
-        io.emit('clickUpdate', {
-            count: clickCount,
-            reason: 'player_click'
+            // Broadcast updated bubbles to all connected clients
+            io.emit('bubblesUpdate', {
+                bubbles: bubbles,
+                reason: 'player_click'
+            });
+        }
+    });
+
+    // Handle create bubble events
+    socket.on('createBubble', (data) => {
+        const newBubble = {
+            id: nextBubbleId++,
+            x: data.x,
+            y: data.y,
+            size: 10 // start small
+        };
+        bubbles.push(newBubble);
+        console.log(`New bubble ${newBubble.id} created at (${data.x}, ${data.y})`);
+
+        // Broadcast updated bubbles to all connected clients
+        io.emit('bubblesUpdate', {
+            bubbles: bubbles,
+            reason: 'bubble_created'
         });
     });
 
