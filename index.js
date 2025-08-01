@@ -17,53 +17,60 @@ const port = process.env.PORT || 8080;
 let bubbles = [];
 let nextBubbleId = 1;
 
-// Create initial bubble for backward compatibility
-bubbles.push({
-  id: nextBubbleId++,
-  x: 200, // center of 400px wide game area
-  y: 150, // center of 300px tall game area
-  size: 120 // start with your current click count
-});
+// Air loss configuration
+const BASE_AIR_LOSS_INTERVAL = 5000; // 5 seconds base
+const AIR_LOSS_RANDOMNESS = 2000; // +/- 2 seconds randomness
 
-// Air loss timer - all bubbles lose 1 size every 5 seconds
-const AIR_LOSS_INTERVAL = 5000; // 5 seconds
-let airLossTimer = null;
+// Helper function to create bubble with individual timer
+const createBubbleWithTimer = (x, y, size) => {
+  const bubble = {
+    id: nextBubbleId++,
+    x: x,
+    y: y,
+    size: size,
+    timer: null
+  };
 
-const startAirLoss = () => {
-  if (airLossTimer) clearInterval(airLossTimer);
+  // Start individual air loss timer with random interval
+  const startBubbleTimer = () => {
+    const randomInterval = BASE_AIR_LOSS_INTERVAL + (Math.random() - 0.5) * AIR_LOSS_RANDOMNESS * 2;
 
-  airLossTimer = setInterval(() => {
-    let bubblesChanged = false;
-
-    // Apply air loss to each bubble
-    bubbles.forEach(bubble => {
+    bubble.timer = setTimeout(() => {
       if (bubble.size > 0) {
         bubble.size--;
-        bubblesChanged = true;
-        console.log(`Air loss! Bubble ${bubble.id} shrunk to: ${bubble.size}`);
+        console.log(`Air loss! Bubble ${bubble.id} shrunk to: ${bubble.size} (next in ${Math.round(randomInterval/1000)}s)`);
+
+        if (bubble.size <= 0) {
+          // Bubble popped - remove it
+          const bubbleIndex = bubbles.findIndex(b => b.id === bubble.id);
+          if (bubbleIndex !== -1) {
+            clearTimeout(bubble.timer);
+            bubbles.splice(bubbleIndex, 1);
+            console.log(`Bubble ${bubble.id} popped!`);
+          }
+        } else {
+          // Schedule next air loss
+          startBubbleTimer();
+        }
+
+        // Broadcast updated bubbles to all clients (without timer property)
+        const bubblesForClient = bubbles.map(({timer, ...bubble}) => bubble);
+        io.emit('bubblesUpdate', {
+          bubbles: bubblesForClient,
+          reason: 'air_loss'
+        });
       }
-    });
+    }, randomInterval);
+  };
 
-    // Remove bubbles that have shrunk to 0
-    const originalCount = bubbles.length;
-    bubbles = bubbles.filter(bubble => bubble.size > 0);
-    if (bubbles.length < originalCount) {
-      console.log(`${originalCount - bubbles.length} bubbles popped!`);
-      bubblesChanged = true;
-    }
-
-    if (bubblesChanged) {
-      // Broadcast updated bubbles to all clients
-      io.emit('bubblesUpdate', {
-        bubbles: bubbles,
-        reason: 'air_loss'
-      });
-    }
-  }, AIR_LOSS_INTERVAL);
+  startBubbleTimer();
+  return bubble;
 };
 
-// Start air loss when server starts
-startAirLoss();
+// Create initial bubble for backward compatibility
+bubbles.push(createBubbleWithTimer(200, 150, 120));
+
+// Individual timers handle air loss - no global timer needed!
 
 // Simple hello world route
 app.get('/', (req, res) => {
@@ -75,9 +82,10 @@ app.get('/', (req, res) => {
 io.on('connection', (socket) => {
     console.log(`User connected: ${socket.id}`);
 
-    // Send current bubbles to newly connected client
+    // Send current bubbles to newly connected client (without timer property)
+    const bubblesForClient = bubbles.map(({timer, ...bubble}) => bubble);
     socket.emit('bubblesUpdate', {
-        bubbles: bubbles,
+        bubbles: bubblesForClient,
         reason: 'initial_sync'
     });
 
@@ -88,9 +96,10 @@ io.on('connection', (socket) => {
             bubble.size++;
             console.log(`Bubble ${bubble.id} clicked! New size: ${bubble.size}`);
 
-            // Broadcast updated bubbles to all connected clients
+            // Broadcast updated bubbles to all connected clients (without timer property)
+            const bubblesForClient = bubbles.map(({timer, ...bubble}) => bubble);
             io.emit('bubblesUpdate', {
-                bubbles: bubbles,
+                bubbles: bubblesForClient,
                 reason: 'player_click'
             });
         }
@@ -98,18 +107,14 @@ io.on('connection', (socket) => {
 
     // Handle create bubble events
     socket.on('createBubble', (data) => {
-        const newBubble = {
-            id: nextBubbleId++,
-            x: data.x,
-            y: data.y,
-            size: 10 // start small
-        };
+        const newBubble = createBubbleWithTimer(data.x, data.y, 10); // start small
         bubbles.push(newBubble);
         console.log(`New bubble ${newBubble.id} created at (${data.x}, ${data.y})`);
 
-        // Broadcast updated bubbles to all connected clients
+        // Broadcast updated bubbles to all connected clients (without timer property)
+        const bubblesForClient = bubbles.map(({timer, ...bubble}) => bubble);
         io.emit('bubblesUpdate', {
-            bubbles: bubbles,
+            bubbles: bubblesForClient,
             reason: 'bubble_created'
         });
     });
