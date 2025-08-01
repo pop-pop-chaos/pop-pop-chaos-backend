@@ -120,13 +120,13 @@ const loadBubbles = () => {
         // Handle transition from pixel coordinates to percentage coordinates
         let xPercent, yPercent;
         if (bubbleData.xPercent !== undefined && bubbleData.yPercent !== undefined) {
-          // New format: percentage coordinates
-          xPercent = bubbleData.xPercent;
-          yPercent = bubbleData.yPercent;
+          // New format: percentage coordinates - ensure they are numbers
+          xPercent = parseFloat(bubbleData.xPercent);
+          yPercent = parseFloat(bubbleData.yPercent);
         } else {
           // Old format: convert pixel coordinates to percentages
-          xPercent = bubbleData.x / 1000;
-          yPercent = bubbleData.y / 600;
+          xPercent = parseFloat(bubbleData.x) / 1000;
+          yPercent = parseFloat(bubbleData.y) / 600;
         }
 
         const bubble = createBubbleWithTimer(xPercent, yPercent, bubbleData.size, bubbleData.name);
@@ -170,8 +170,9 @@ const loadBubblesFromDB = async () => {
     // Convert database format to our bubble format
     rows.forEach(row => {
       // Use percentage positions directly (they're already stored as 0-1 in database)
-      const xPercent = row.position_x;
-      const yPercent = row.position_y;
+      // IMPORTANT: Convert string values from DB to numbers to prevent bugs
+      const xPercent = parseFloat(row.position_x);
+      const yPercent = parseFloat(row.position_y);
 
       const bubble = createBubbleWithTimer(xPercent, yPercent, row.size, row.name);
       bubble.id = row.bubble_id;
@@ -242,6 +243,10 @@ const AIR_LOSS_RANDOMNESS = 2000; // +/- 2 seconds randomness
 const MOVEMENT_INTERVAL = 50; // 50ms = 20 FPS movement updates
 const BASE_SPEED = 0.001; // Base movement speed (percentage per frame)
 const SPEED_RANDOMNESS = 0.0005; // Speed variation
+
+// Explosion configuration
+const EXPLOSION_FORCE = 0.01; // The base strength of the push
+const EXPLOSION_RADIUS = 0.5; // The effect radius as a percentage of screen space (0.5 = 50%)
 
 // Helper function to create bubble with individual timer
 const createBubbleWithTimer = (xPercent, yPercent, size, name = null) => {
@@ -351,6 +356,46 @@ const createBubbleWithTimer = (xPercent, yPercent, size, name = null) => {
   return bubble;
 };
 
+// Helper function to apply explosion physics
+const applyExplosionForce = (burstBubble) => {
+  const burstCenterX = burstBubble.xPercent;
+  const burstCenterY = burstBubble.yPercent;
+
+  console.log(`💥 Applying explosion force from ${burstBubble.name} at (${burstCenterX.toFixed(2)}, ${burstCenterY.toFixed(2)})`);
+
+  bubbles.forEach(otherBubble => {
+    // Don't apply force to the bubble that just burst
+    if (otherBubble.id === burstBubble.id) {
+      return;
+    }
+
+    const vectorX = otherBubble.xPercent - burstCenterX;
+    const vectorY = otherBubble.yPercent - burstCenterY;
+
+    // Calculate the distance using Pythagorean theorem
+    const distance = Math.sqrt(vectorX * vectorX + vectorY * vectorY);
+
+    // If the bubble is outside the explosion radius, do nothing
+    if (distance > EXPLOSION_RADIUS || distance === 0) {
+      return;
+    }
+
+    // Calculate the force magnitude with a linear falloff
+    // The closer the bubble, the stronger the force
+    const forceMagnitude = (1 - (distance / EXPLOSION_RADIUS)) * EXPLOSION_FORCE;
+
+    // Normalize the direction vector (to get a unit vector)
+    const normalizedX = vectorX / distance;
+    const normalizedY = vectorY / distance;
+
+    // Apply the force to the other bubble's velocity
+    otherBubble.dx += normalizedX * forceMagnitude;
+    otherBubble.dy += normalizedY * forceMagnitude;
+
+    console.log(`  -> Pushing ${otherBubble.name}. Force: ${forceMagnitude.toFixed(4)}. New velocity: dx=${otherBubble.dx.toFixed(4)}, dy=${otherBubble.dy.toFixed(4)}`);
+  });
+};
+
 // Initialize storage based on STORAGE_MODE
 const initStorage = async () => {
   const storageMode = process.env.STORAGE_MODE || 'file';
@@ -451,6 +496,7 @@ io.on('connection', (socket) => {
             // Check if bubble should burst
             if (bubble.size > 1000) {
                 console.log(`💥 ${bubble.name} burst from over-inflation! 💥`);
+                applyExplosionForce(bubble);
                 clearTimeout(bubble.airLossTimer);
                 clearInterval(bubble.movementTimer);
                 bubbles.splice(bubbleIndex, 1);
@@ -492,6 +538,7 @@ io.on('connection', (socket) => {
             // Check if bubble should burst
             if (bubble.size > 1000) {
                 console.log(`💥 ${bubble.name} burst from god-powered over-inflation! 💥`);
+                applyExplosionForce(bubble);
                 clearTimeout(bubble.airLossTimer);
                 clearInterval(bubble.movementTimer);
                 bubbles.splice(bubbleIndex, 1);
