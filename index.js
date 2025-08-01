@@ -91,7 +91,7 @@ const saveBubbles = async () => {
   } else {
     // File storage fallback
     try {
-      const bubblesForStorage = bubbles.map(({timer, ...bubble}) => bubble);
+      const bubblesForStorage = bubbles.map(({timer, movementTimer, ...bubble}) => bubble);
       fs.writeFileSync(BUBBLES_FILE, JSON.stringify({
         bubbles: bubblesForStorage,
         nextBubbleId: nextBubbleId,
@@ -132,6 +132,11 @@ const loadBubbles = () => {
         const bubble = createBubbleWithTimer(xPercent, yPercent, bubbleData.size, bubbleData.name);
         // Override the auto-generated ID with the stored one
         bubble.id = bubbleData.id;
+        // Restore velocity if available, otherwise keep randomly generated values
+        if (bubbleData.dx !== undefined && bubbleData.dy !== undefined) {
+          bubble.dx = bubbleData.dx;
+          bubble.dy = bubbleData.dy;
+        }
         bubbles.push(bubble);
       });
 
@@ -171,6 +176,8 @@ const loadBubblesFromDB = async () => {
       const bubble = createBubbleWithTimer(xPercent, yPercent, row.size, row.name);
       bubble.id = row.bubble_id;
       bubble.color = row.color; // Add color property
+      // Note: Velocity properties will be randomly generated for now
+      // Future: Add dx, dy columns to database to persist velocity
       bubbles.push(bubble);
     });
 
@@ -231,8 +238,17 @@ let nextBubbleId = 1;
 const BASE_AIR_LOSS_INTERVAL = 5000; // 5 seconds base
 const AIR_LOSS_RANDOMNESS = 2000; // +/- 2 seconds randomness
 
+// Movement configuration
+const MOVEMENT_INTERVAL = 50; // 50ms = 20 FPS movement updates
+const BASE_SPEED = 0.001; // Base movement speed (percentage per frame)
+const SPEED_RANDOMNESS = 0.0005; // Speed variation
+
 // Helper function to create bubble with individual timer
 const createBubbleWithTimer = (xPercent, yPercent, size, name = null) => {
+  // Generate random velocity for movement
+  const speed = BASE_SPEED + (Math.random() - 0.5) * SPEED_RANDOMNESS * 2;
+  const angle = Math.random() * 2 * Math.PI; // Random direction
+
   const bubble = {
     id: nextBubbleId++,
     xPercent: xPercent, // Store as percentage (0-1)
@@ -242,7 +258,11 @@ const createBubbleWithTimer = (xPercent, yPercent, size, name = null) => {
     y: yPercent * 600,
     size: size,
     name: name || `Bubble ${nextBubbleId - 1}`, // default name if none provided
-    timer: null
+    // Movement properties
+    dx: Math.cos(angle) * speed, // Velocity in x direction (percentage per frame)
+    dy: Math.sin(angle) * speed, // Velocity in y direction (percentage per frame)
+    timer: null,
+    movementTimer: null
   };
 
   // Start individual air loss timer with random interval
@@ -259,6 +279,7 @@ const createBubbleWithTimer = (xPercent, yPercent, size, name = null) => {
           const bubbleIndex = bubbles.findIndex(b => b.id === bubble.id);
           if (bubbleIndex !== -1) {
             clearTimeout(bubble.timer);
+            clearInterval(bubble.movementTimer);
             bubbles.splice(bubbleIndex, 1);
             console.log(`💥 ${bubble.name} popped! 💥`);
           }
@@ -269,7 +290,7 @@ const createBubbleWithTimer = (xPercent, yPercent, size, name = null) => {
 
         // Save bubbles and broadcast updated bubbles to all clients
         saveBubbles();
-        const bubblesForClient = bubbles.map(({timer, ...bubble}) => bubble);
+        const bubblesForClient = bubbles.map(({timer, movementTimer, ...bubble}) => bubble);
         io.emit('bubblesUpdate', {
           bubbles: bubblesForClient,
           reason: 'air_loss'
@@ -278,7 +299,46 @@ const createBubbleWithTimer = (xPercent, yPercent, size, name = null) => {
     }, randomInterval);
   };
 
+  // Start movement timer for continuous movement
+  const startMovementTimer = () => {
+    bubble.movementTimer = setInterval(() => {
+      // Update position
+      bubble.xPercent += bubble.dx;
+      bubble.yPercent += bubble.dy;
+
+      // Get bubble radius as percentage (approximate based on size)
+      const bubbleRadius = Math.max(10, bubble.size) / 1000; // Convert pixels to percentage roughly
+
+      // Check for boundary collisions and bounce
+      if (bubble.xPercent - bubbleRadius <= 0 || bubble.xPercent + bubbleRadius >= 1) {
+        bubble.dx = -bubble.dx; // Reverse x velocity
+        // Keep bubble in bounds
+        bubble.xPercent = Math.max(bubbleRadius, Math.min(1 - bubbleRadius, bubble.xPercent));
+      }
+
+      if (bubble.yPercent - bubbleRadius <= 0 || bubble.yPercent + bubbleRadius >= 1) {
+        bubble.dy = -bubble.dy; // Reverse y velocity
+        // Keep bubble in bounds
+        bubble.yPercent = Math.max(bubbleRadius, Math.min(1 - bubbleRadius, bubble.yPercent));
+      }
+
+      // Update backward compatibility coordinates
+      bubble.x = bubble.xPercent * 1000;
+      bubble.y = bubble.yPercent * 600;
+
+      // Broadcast movement updates periodically (every 5th frame to reduce network traffic)
+      if (Math.random() < 0.2) { // 20% chance = roughly every 5 frames
+        const bubblesForClient = bubbles.map(({timer, movementTimer, ...bubble}) => bubble);
+        io.emit('bubblesUpdate', {
+          bubbles: bubblesForClient,
+          reason: 'movement'
+        });
+      }
+    }, MOVEMENT_INTERVAL);
+  };
+
   startBubbleTimer();
+  startMovementTimer();
   return bubble;
 };
 
@@ -354,7 +414,7 @@ io.on('connection', (socket) => {
     console.log(`User connected: ${socket.id}`);
 
     // Send current bubbles to newly connected client (without timer property)
-    const bubblesForClient = bubbles.map(({timer, ...bubble}) => bubble);
+    const bubblesForClient = bubbles.map(({timer, movementTimer, ...bubble}) => bubble);
     socket.emit('bubblesUpdate', {
         bubbles: bubblesForClient,
         reason: 'initial_sync'
@@ -369,7 +429,7 @@ io.on('connection', (socket) => {
 
             // Save and broadcast updated bubbles to all connected clients
             saveBubbles();
-            const bubblesForClient = bubbles.map(({timer, ...bubble}) => bubble);
+            const bubblesForClient = bubbles.map(({timer, movementTimer, ...bubble}) => bubble);
             io.emit('bubblesUpdate', {
                 bubbles: bubblesForClient,
                 reason: 'player_click'
@@ -385,7 +445,7 @@ io.on('connection', (socket) => {
 
         // Save and broadcast updated bubbles to all connected clients
         saveBubbles();
-        const bubblesForClient = bubbles.map(({timer, ...bubble}) => bubble);
+        const bubblesForClient = bubbles.map(({timer, movementTimer, ...bubble}) => bubble);
         io.emit('bubblesUpdate', {
             bubbles: bubblesForClient,
             reason: 'bubble_created'
@@ -400,7 +460,7 @@ io.on('connection', (socket) => {
             console.log(`⚡ GOD INFLATE: ${bubble.name} +${data.amount} → ${bubble.size}`);
 
             saveBubbles();
-            const bubblesForClient = bubbles.map(({timer, ...bubble}) => bubble);
+            const bubblesForClient = bubbles.map(({timer, movementTimer, ...bubble}) => bubble);
             io.emit('bubblesUpdate', {
                 bubbles: bubblesForClient,
                 reason: 'god_inflate'
@@ -419,13 +479,14 @@ io.on('connection', (socket) => {
                 const bubbleIndex = bubbles.findIndex(b => b.id === bubble.id);
                 if (bubbleIndex !== -1) {
                     clearTimeout(bubble.timer);
+                    clearInterval(bubble.movementTimer);
                     bubbles.splice(bubbleIndex, 1);
                     console.log(`💥 ${bubble.name} popped by god power! 💥`);
                 }
             }
 
             saveBubbles();
-            const bubblesForClient = bubbles.map(({timer, ...bubble}) => bubble);
+            const bubblesForClient = bubbles.map(({timer, movementTimer, ...bubble}) => bubble);
             io.emit('bubblesUpdate', {
                 bubbles: bubblesForClient,
                 reason: 'god_deflate'
@@ -442,11 +503,12 @@ io.on('connection', (socket) => {
             const bubbleIndex = bubbles.findIndex(b => b.id === bubble.id);
             if (bubbleIndex !== -1) {
                 clearTimeout(bubble.timer);
+                clearInterval(bubble.movementTimer);
                 bubbles.splice(bubbleIndex, 1);
             }
 
             saveBubbles();
-            const bubblesForClient = bubbles.map(({timer, ...bubble}) => bubble);
+            const bubblesForClient = bubbles.map(({timer, movementTimer, ...bubble}) => bubble);
             io.emit('bubblesUpdate', {
                 bubbles: bubblesForClient,
                 reason: 'god_pop'
