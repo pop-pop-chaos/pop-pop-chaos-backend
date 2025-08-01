@@ -85,7 +85,7 @@ const BUBBLES_FILE = path.join(__dirname, 'bubbles.json');
 // Storage functions
 const saveBubbles = async () => {
   const storageMode = process.env.STORAGE_MODE || 'file';
-  
+
   if (storageMode === 'mysql' && db) {
     return await saveBubblesToDB();
   } else {
@@ -138,30 +138,30 @@ const loadBubblesFromDB = async () => {
     // Get next bubble ID
     const [idRows] = await db.execute('SELECT MAX(bubble_id) as max_id FROM bubbles');
     nextBubbleId = (idRows[0].max_id || 0) + 1;
-    
+
     // Load all bubbles with color info
     const [rows] = await db.execute(`
-      SELECT b.bubble_id, b.name, b.size, b.position_x, b.position_y, 
+      SELECT b.bubble_id, b.name, b.size, b.position_x, b.position_y,
              c.hex_code as color
-      FROM bubbles b 
+      FROM bubbles b
       JOIN bubble_colors c ON b.color_id = c.color_id
       ORDER BY b.bubble_id
     `);
-    
+
     console.log(`📂 Loading ${rows.length} bubbles from MySQL database`);
-    
+
     // Convert database format to our bubble format
     rows.forEach(row => {
       // Convert percentage positions back to pixels (assuming 400x300 game area)
       const x = row.position_x * 400;
       const y = row.position_y * 300;
-      
+
       const bubble = createBubbleWithTimer(x, y, row.size, row.name);
       bubble.id = row.bubble_id;
       bubble.color = row.color; // Add color property
       bubbles.push(bubble);
     });
-    
+
     console.log(`✅ Restored ${bubbles.length} bubbles from database with active timers`);
     return rows.length > 0;
   } catch (error) {
@@ -172,21 +172,37 @@ const loadBubblesFromDB = async () => {
 
 const saveBubblesToDB = async () => {
   try {
-    // Clear existing bubbles
-    await db.execute('DELETE FROM bubbles');
-    
-    // Insert current bubbles
+    // Get current bubble IDs in database
+    const [existingRows] = await db.execute('SELECT bubble_id FROM bubbles');
+    const existingIds = new Set(existingRows.map(row => row.bubble_id));
+    const currentIds = new Set(bubbles.map(bubble => bubble.id));
+
+    // Delete bubbles that no longer exist in memory
+    for (const existingId of existingIds) {
+      if (!currentIds.has(existingId)) {
+        await db.execute('DELETE FROM bubbles WHERE bubble_id = ?', [existingId]);
+        console.log(`🗑️  Removed bubble ${existingId} from database`);
+      }
+    }
+
+    // Insert or update current bubbles
     for (const bubble of bubbles) {
       // Convert pixel positions to percentages
       const position_x = bubble.x / 400; // 400px game area width
       const position_y = bubble.y / 300; // 300px game area height
-      
+
       await db.execute(`
-        INSERT INTO bubbles (bubble_id, name, size, position_x, position_y, color_id) 
+        INSERT INTO bubbles (bubble_id, name, size, position_x, position_y, color_id)
         VALUES (?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          name = VALUES(name),
+          size = VALUES(size),
+          position_x = VALUES(position_x),
+          position_y = VALUES(position_y),
+          updated_at = CURRENT_TIMESTAMP
       `, [bubble.id, bubble.name, bubble.size, position_x, position_y, 1]); // default to green (color_id=1)
     }
-    
+
     console.log(`💾 Saved ${bubbles.length} bubbles to MySQL database`);
     return true;
   } catch (error) {
@@ -274,7 +290,7 @@ const initStorage = async () => {
     }
 
     console.log('✅ MySQL storage ready!');
-    
+
     // Load existing bubbles from database
     const loaded = await loadBubblesFromDB();
     if (!loaded) {
@@ -283,7 +299,7 @@ const initStorage = async () => {
       await saveBubblesToDB(); // Save the initial bubble
       console.log("🫧 Created initial bubble in database");
     }
-    
+
     return true;
 
   } else {
