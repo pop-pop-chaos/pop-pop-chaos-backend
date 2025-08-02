@@ -274,6 +274,10 @@ const createBubbleWithTimer = (xPercent, yPercent, size, name = null) => {
   const speed = BASE_SPEED + (Math.random() - 0.5) * SPEED_RANDOMNESS * 2;
   const angle = Math.random() * 2 * Math.PI; // Random direction
 
+  // Randomly assign team for new bubbles
+  const teams = ['default', 'team1', 'team2', 'team3', 'team4'];
+  const randomTeam = teams[Math.floor(Math.random() * teams.length)];
+
   const bubble = {
     id: nextBubbleId++,
     xPercent: xPercent, // Store as percentage (0-1)
@@ -283,6 +287,7 @@ const createBubbleWithTimer = (xPercent, yPercent, size, name = null) => {
     y: yPercent * 600,
     size: size,
     name: name || `Bubble ${nextBubbleId - 1}`, // default name if none provided
+    team: randomTeam, // Random team assignment
     // Movement properties
     dx: Math.cos(angle) * speed, // Velocity in x direction (percentage per frame)
     dy: Math.sin(angle) * speed, // Velocity in y direction (percentage per frame)
