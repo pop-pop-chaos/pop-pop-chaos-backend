@@ -370,6 +370,17 @@ const createBubbleWithTimer = (xPercent, yPercent, size, name = null) => {
   return bubble;
 };
 
+// Helper function to burst a bubble with explosion physics and cleanup
+const BurstYourBubble = (bubble) => {
+  applyExplosionForce(bubble);
+  clearTimeout(bubble.airLossTimer);
+  clearInterval(bubble.movementTimer);
+  const bubbleIndex = bubbles.findIndex(b => b.id === bubble.id);
+  if (bubbleIndex !== -1) {
+    bubbles.splice(bubbleIndex, 1);
+  }
+};
+
 // Helper function to apply explosion physics
 const applyExplosionForce = (burstBubble) => {
   const burstCenterX = burstBubble.xPercent;
@@ -509,10 +520,7 @@ io.on('connection', (socket) => {
             // Check if bubble should burst
             if (bubble.size > 1000) {
                 console.log(`💥 ${bubble.name} burst from over-inflation! 💥`);
-                applyExplosionForce(bubble);
-                clearTimeout(bubble.airLossTimer);
-                clearInterval(bubble.movementTimer);
-                bubbles.splice(bubbleIndex, 1);
+                BurstYourBubble(bubble);
             }
 
             // Save and broadcast updated bubbles to all connected clients
@@ -551,10 +559,7 @@ io.on('connection', (socket) => {
             // Check if bubble should burst
             if (bubble.size > 1000) {
                 console.log(`💥 ${bubble.name} burst from god-powered over-inflation! 💥`);
-                applyExplosionForce(bubble);
-                clearTimeout(bubble.airLossTimer);
-                clearInterval(bubble.movementTimer);
-                bubbles.splice(bubbleIndex, 1);
+                BurstYourBubble(bubble);
             }
 
             saveBubbles();
@@ -597,13 +602,8 @@ io.on('connection', (socket) => {
         if (bubble) {
             console.log(`⚡💥 GOD POP: ${bubble.name} instantly destroyed! 💥⚡`);
 
-            // Remove bubble immediately
-            const bubbleIndex = bubbles.findIndex(b => b.id === bubble.id);
-            if (bubbleIndex !== -1) {
-                clearTimeout(bubble.airLossTimer);
-                clearInterval(bubble.movementTimer);
-                bubbles.splice(bubbleIndex, 1);
-            }
+            // Apply explosion physics and remove bubble
+            BurstYourBubble(bubble);
 
             saveBubbles();
             const bubblesForClient = bubbles.map(({airLossTimer, movementTimer, ...bubble}) => bubble);
