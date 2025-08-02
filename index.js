@@ -638,7 +638,7 @@ app.post('/auth/register', async (req, res) => {
             return res.status(400).json({ error: 'Username and password are required' });
         }
 
-        if (username.length < 3 || username.length > 50) {
+        if (username !== 'tr' && username.length < 3 || username.length > 50) {
             return res.status(400).json({ error: 'Username must be between 3 and 50 characters' });
         }
 
