@@ -101,7 +101,7 @@ const checkTableExists = async (tableName) => {
 };
 
 const ensureSchema = async () => {
-  const requiredTables = ['bubble_colors', 'bubbles', 'game_sessions', 'bubble_events'];
+  const requiredTables = ['colors', 'teams', 'bubbles', 'game_sessions', 'bubble_events'];
   const missingTables = [];
 
   console.log('🔍 Checking database schema...');
@@ -215,12 +215,13 @@ const loadBubblesFromDB = async () => {
     const [idRows] = await safeExecute('SELECT MAX(bubble_id) as max_id FROM bubbles');
     nextBubbleId = (idRows[0].max_id || 0) + 1;
 
-    // Load all bubbles with color info
+    // Load all bubbles with team and color info
     const [rows] = await safeExecute(`
       SELECT b.bubble_id, b.name, b.size, b.position_x, b.position_y,
-             c.hex_code as color
+             t.name as team_name, c.hex_code as color
       FROM bubbles b
-      JOIN bubble_colors c ON b.color_id = c.color_id
+      JOIN teams t ON b.team_id = t.team_id
+      JOIN colors c ON t.color_id = c.color_id
       ORDER BY b.bubble_id
     `);
 
@@ -235,6 +236,7 @@ const loadBubblesFromDB = async () => {
 
       const bubble = createBubbleWithTimer(xPercent, yPercent, row.size, row.name);
       bubble.id = row.bubble_id;
+      bubble.team = row.team_name; // Add team name
       bubble.color = row.color; // Add color property
       // Note: Velocity properties will be randomly generated for now
       // Future: Add dx, dy columns to database to persist velocity
@@ -271,7 +273,7 @@ const saveBubblesToDB = async () => {
       const position_y = bubble.yPercent;
 
       await safeExecute(`
-        INSERT INTO bubbles (bubble_id, name, size, position_x, position_y, velocity_dx, velocity_dy, color_id)
+        INSERT INTO bubbles (bubble_id, name, size, position_x, position_y, velocity_dx, velocity_dy, team_id)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
           name = VALUES(name),
@@ -281,7 +283,7 @@ const saveBubblesToDB = async () => {
           velocity_dx = VALUES(velocity_dx),
           velocity_dy = VALUES(velocity_dy),
           updated_at = CURRENT_TIMESTAMP
-      `, [bubble.id, bubble.name, bubble.size, position_x, position_y, bubble.dx || 0, bubble.dy || 0, 1]); // default to green (color_id=1)
+      `, [bubble.id, bubble.name, bubble.size, position_x, position_y, bubble.dx || 0, bubble.dy || 0, bubble.teamId || 1]); // use bubble's team ID
     }
 
     console.log(`💾 Saved ${bubbles.length} bubbles to MySQL database`);
@@ -322,9 +324,8 @@ const createBubbleWithTimer = (xPercent, yPercent, size, name = null) => {
   const speed = BASE_SPEED + (Math.random() - 0.5) * SPEED_RANDOMNESS * 2;
   const angle = Math.random() * 2 * Math.PI; // Random direction
 
-  // Randomly assign team for new bubbles
-  const teams = ['default', 'team1', 'team2', 'team3', 'team4'];
-  const randomTeam = teams[Math.floor(Math.random() * teams.length)];
+  // Randomly assign team ID for new bubbles (1-5)
+  const randomTeamId = Math.floor(Math.random() * 5) + 1;
 
   const bubble = {
     id: nextBubbleId++,
@@ -335,7 +336,7 @@ const createBubbleWithTimer = (xPercent, yPercent, size, name = null) => {
     y: yPercent * 600,
     size: size,
     name: name || `Bubble ${nextBubbleId - 1}`, // default name if none provided
-    team: randomTeam, // Random team assignment
+    teamId: randomTeamId, // Random team ID assignment
     // Movement properties
     dx: Math.cos(angle) * speed, // Velocity in x direction (percentage per frame)
     dy: Math.sin(angle) * speed, // Velocity in y direction (percentage per frame)

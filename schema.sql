@@ -1,21 +1,39 @@
--- Pop Pop Chaos Database Schema
+-- Pop Pop Chaos Database Schema (3NF Design)
 
--- Bubble colors lookup table
-CREATE TABLE bubble_colors (
+-- Colors table (pure color definitions)
+CREATE TABLE colors (
   color_id INT PRIMARY KEY AUTO_INCREMENT,
   name VARCHAR(50) NOT NULL UNIQUE,
   hex_code VARCHAR(7) NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Teams table (team definitions with color references)
+CREATE TABLE teams (
+  team_id INT PRIMARY KEY AUTO_INCREMENT,
+  name VARCHAR(50) NOT NULL UNIQUE,
+  color_id INT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+  FOREIGN KEY (color_id) REFERENCES colors(color_id)
+);
+
 -- Insert default colors
-INSERT INTO bubble_colors (name, hex_code) VALUES
+INSERT INTO colors (name, hex_code) VALUES
 ('green', '#4CAF50'),
 ('blue', '#2196F3'),
 ('red', '#F44336'),
 ('purple', '#9C27B0'),
 ('orange', '#FF9800'),
 ('teal', '#009688');
+
+-- Insert default teams
+INSERT INTO teams (name, color_id) VALUES
+('default', 1),    -- green
+('team1', 2),      -- blue
+('team2', 3),      -- red
+('team3', 4),      -- purple
+('team4', 5);      -- orange
 
 -- Main bubbles table
 CREATE TABLE bubbles (
@@ -26,11 +44,11 @@ CREATE TABLE bubbles (
   position_y DECIMAL(8,3) NOT NULL,  -- This makes it screen-size independent!
   velocity_dx DECIMAL(8,6) NOT NULL DEFAULT 0.0,  -- X velocity component
   velocity_dy DECIMAL(8,6) NOT NULL DEFAULT 0.0,  -- Y velocity component
-  color_id INT NOT NULL DEFAULT 1,
+  team_id INT NOT NULL DEFAULT 1,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  
-  FOREIGN KEY (color_id) REFERENCES bubble_colors(color_id),
+
+  FOREIGN KEY (team_id) REFERENCES teams(team_id),
   INDEX idx_size (size),
   INDEX idx_position (position_x, position_y)
 );
@@ -53,7 +71,7 @@ CREATE TABLE bubble_events (
   size_after INT,
   player_ip VARCHAR(45),  -- For basic player tracking
   timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  
+
   INDEX idx_bubble (bubble_id),
   INDEX idx_event_type (event_type),
   INDEX idx_timestamp (timestamp)
