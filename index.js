@@ -352,8 +352,8 @@ const createBubbleWithTimer = (xPercent, yPercent, size, name = null) => {
       bubble.x = bubble.xPercent * 1000;
       bubble.y = bubble.yPercent * 600;
 
-      // Broadcast movement updates periodically (reduce network traffic)
-      if (Math.random() < 0.05) { // 5% chance = roughly every 20 frames
+      // Broadcast movement updates every frame for smooth animation
+      if (true) { // Always broadcast for smooth movement
         const bubblesForClient = bubbles.map(({airLossTimer, movementTimer, ...bubble}) => bubble);
         io.emit('bubblesUpdate', {
           bubbles: bubblesForClient,
