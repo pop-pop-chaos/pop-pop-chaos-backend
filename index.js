@@ -23,6 +23,21 @@ let db = null;
 
 const initDatabase = async () => {
   try {
+    // Single connection approach - good for shared hosting like Dreamhost
+    // Alternative: Connection Pool for higher performance/reliability
+    // db = mysql.createPool({
+    //   host: process.env.DB_HOST,
+    //   user: process.env.DB_USER,
+    //   password: process.env.DB_PASSWORD,
+    //   database: process.env.DB_NAME,
+    //   port: process.env.DB_PORT || 3306,
+    //   connectionLimit: 5,      // Conservative for shared hosting
+    //   acquireTimeout: 60000,   // 60 seconds
+    //   timeout: 60000,          // 60 seconds
+    //   reconnect: true,
+    //   idleTimeout: 300000      // 5 minutes idle timeout
+    // });
+
     db = await mysql.createConnection({
       host: process.env.DB_HOST,
       user: process.env.DB_USER,
@@ -36,6 +51,23 @@ const initDatabase = async () => {
   } catch (error) {
     console.error('❌ Database connection failed:', error.message);
     return false;
+  }
+};
+
+// Ensure database connection is active, reconnect if needed
+const ensureConnection = async () => {
+  try {
+    await db.ping();
+  } catch (error) {
+    console.log('🔄 Database connection lost, reconnecting...');
+    db = await mysql.createConnection({
+      host: process.env.DB_HOST,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
+      port: process.env.DB_PORT || 3306
+    });
+    console.log('✅ Database reconnected successfully');
   }
 };
 
@@ -163,6 +195,8 @@ const loadBubbles = () => {
 // MySQL storage functions
 const loadBubblesFromDB = async () => {
   try {
+    // Ensure database connection is active
+    await ensureConnection();
     // Get next bubble ID
     const [idRows] = await db.execute('SELECT MAX(bubble_id) as max_id FROM bubbles');
     nextBubbleId = (idRows[0].max_id || 0) + 1;
@@ -203,6 +237,8 @@ const loadBubblesFromDB = async () => {
 
 const saveBubblesToDB = async () => {
   try {
+    // Ensure database connection is active
+    await ensureConnection();
     // Get current bubble IDs in database
     const [existingRows] = await db.execute('SELECT bubble_id FROM bubbles');
     const existingIds = new Set(existingRows.map(row => row.bubble_id));
