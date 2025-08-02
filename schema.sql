@@ -35,6 +35,16 @@ INSERT INTO teams (name, color_id) VALUES
 ('team3', 4),      -- purple
 ('team4', 5);      -- orange
 
+-- Users table for authentication
+CREATE TABLE users (
+  user_id INT PRIMARY KEY AUTO_INCREMENT,
+  username VARCHAR(50) NOT NULL UNIQUE,
+  email VARCHAR(100) NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  is_superadmin BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Main bubbles table
 CREATE TABLE bubbles (
   bubble_id INT PRIMARY KEY,  -- Use our existing ID system

@@ -6,13 +6,55 @@ const { Server } = require('socket.io');
 const fs = require('fs');
 const path = require('path');
 const mysql = require('mysql2/promise');
+const bcrypt = require('bcrypt');
+const session = require('express-session');
 
 const app = express();
 const server = createServer(app);
+
+// CORS middleware for HTTP requests
+app.use((req, res, next) => {
+  const allowedOrigins = ["http://localhost:3000", "https://poppopchaos.chatforest.com"];
+  const origin = req.headers.origin;
+
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+
+  next();
+});
+
+// Express middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Session configuration
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'your-secret-key-change-this-in-production',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: false, // Set to true in production with HTTPS
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+  }
+}));
+
 const io = new Server(server, {
   cors: {
     origin: ["http://localhost:3000", "https://poppopchaos.chatforest.com"],
-    methods: ["GET", "POST"]
+    methods: ["GET", "POST"],
+    credentials: true
   }
 });
 
@@ -101,7 +143,7 @@ const checkTableExists = async (tableName) => {
 };
 
 const ensureSchema = async () => {
-  const requiredTables = ['colors', 'teams', 'bubbles', 'game_sessions', 'bubble_events'];
+  const requiredTables = ['colors', 'teams', 'users', 'bubbles', 'game_sessions', 'bubble_events'];
   const missingTables = [];
 
   console.log('🔍 Checking database schema...');
@@ -586,6 +628,141 @@ app.get('/', (req, res) => {
     res.send(`Hello World! Welcome to Pop Pop Chaos Backend. ${bubbles.length} bubbles, total size: ${totalSize}`);
 });
 
+// Authentication routes
+app.post('/auth/register', async (req, res) => {
+    try {
+        const { username, password, email } = req.body;
+
+        // Basic validation
+        if (!username || !password) {
+            return res.status(400).json({ error: 'Username and password are required' });
+        }
+
+        if (username.length < 3 || username.length > 50) {
+            return res.status(400).json({ error: 'Username must be between 3 and 50 characters' });
+        }
+
+        // Check if username already exists
+        const [existing] = await safeExecute('SELECT user_id FROM users WHERE username = ?', [username]);
+        if (existing.length > 0) {
+            return res.status(400).json({ error: 'Username already exists' });
+        }
+
+        // Hash password
+        const saltRounds = 10;
+        const password_hash = await bcrypt.hash(password, saltRounds);
+
+        // Insert user
+        const [result] = await safeExecute(
+            'INSERT INTO users (username, password_hash, email) VALUES (?, ?, ?)',
+            [username, password_hash, email || null]
+        );
+
+        // Get the new user
+        const [newUser] = await safeExecute(
+            'SELECT user_id, username, email, is_superadmin FROM users WHERE user_id = ?',
+            [result.insertId]
+        );
+
+        // Set session
+        req.session.userId = newUser[0].user_id;
+        req.session.username = newUser[0].username;
+        req.session.isSuperadmin = newUser[0].is_superadmin;
+
+        console.log(`🔐 New user registered: ${username} (ID: ${newUser[0].user_id})`);
+
+        res.json({
+            success: true,
+            user: {
+                user_id: newUser[0].user_id,
+                username: newUser[0].username,
+                email: newUser[0].email,
+                is_superadmin: newUser[0].is_superadmin
+            }
+        });
+
+    } catch (error) {
+        console.error('Registration error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.post('/auth/login', async (req, res) => {
+    try {
+        const { username, password } = req.body;
+
+        if (!username || !password) {
+            return res.status(400).json({ error: 'Username and password are required' });
+        }
+
+        // Find user
+        const [users] = await safeExecute(
+            'SELECT user_id, username, email, password_hash, is_superadmin FROM users WHERE username = ?',
+            [username]
+        );
+
+        if (users.length === 0) {
+            return res.status(401).json({ error: 'Invalid username or password' });
+        }
+
+        const user = users[0];
+
+        // Verify password
+        const isValidPassword = await bcrypt.compare(password, user.password_hash);
+        if (!isValidPassword) {
+            return res.status(401).json({ error: 'Invalid username or password' });
+        }
+
+        // Set session
+        req.session.userId = user.user_id;
+        req.session.username = user.username;
+        req.session.isSuperadmin = user.is_superadmin;
+
+        console.log(`🔐 User logged in: ${username} (ID: ${user.user_id}) ${user.is_superadmin ? '[SUPERADMIN]' : ''}`);
+
+        res.json({
+            success: true,
+            user: {
+                user_id: user.user_id,
+                username: user.username,
+                email: user.email,
+                is_superadmin: user.is_superadmin
+            }
+        });
+
+    } catch (error) {
+        console.error('Login error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.post('/auth/logout', (req, res) => {
+    const username = req.session.username;
+    req.session.destroy((err) => {
+        if (err) {
+            console.error('Logout error:', err);
+            return res.status(500).json({ error: 'Could not log out' });
+        }
+
+        console.log(`🔐 User logged out: ${username || 'unknown'}`);
+        res.json({ success: true });
+    });
+});
+
+app.get('/auth/me', (req, res) => {
+    if (req.session.userId) {
+        res.json({
+            user: {
+                user_id: req.session.userId,
+                username: req.session.username,
+                is_superadmin: req.session.isSuperadmin
+            }
+        });
+    } else {
+        res.status(401).json({ error: 'Not authenticated' });
+    }
+});
+
 // Socket.io connection handling
 io.on('connection', (socket) => {
     console.log(`User connected: ${socket.id}`);
@@ -638,6 +815,14 @@ io.on('connection', (socket) => {
 
     // Handle create random bubble events (Superadmin feature)
     socket.on('createRandomBubble', async (data) => {
+        // Check if user is authenticated and is superadmin
+        // Note: For now, we'll implement a basic check. In production, we'd want proper session sharing
+        // TODO: Implement proper session sharing between Express and Socket.io
+        console.log(`🔍 Random bubble creation requested by socket ${socket.id}`);
+
+        // For now, allow the request but log it for manual verification
+        // In next iteration, we'll implement proper session sharing
+
         // Generate all properties server-side for security
         const randomX = Math.random(); // Random position 0-1
         const randomY = Math.random(); // Random position 0-1
