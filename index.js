@@ -165,7 +165,7 @@ const saveBubbles = async () => {
   }
 };
 
-const loadBubbles = () => {
+const loadBubbles = async () => {
   try {
     if (fs.existsSync(BUBBLES_FILE)) {
       const data = JSON.parse(fs.readFileSync(BUBBLES_FILE, 'utf8'));
@@ -175,7 +175,7 @@ const loadBubbles = () => {
       nextBubbleId = data.nextBubbleId || 1;
 
       // Restore each bubble with new timer
-      data.bubbles.forEach(bubbleData => {
+      for (const bubbleData of data.bubbles) {
         // Handle transition from pixel coordinates to percentage coordinates
         let xPercent, yPercent;
         if (bubbleData.xPercent !== undefined && bubbleData.yPercent !== undefined) {
@@ -188,7 +188,7 @@ const loadBubbles = () => {
           yPercent = parseFloat(bubbleData.y) / 600;
         }
 
-        const bubble = createBubbleWithTimer(xPercent, yPercent, bubbleData.size, bubbleData.name);
+        const bubble = await createBubbleWithTimer(xPercent, yPercent, bubbleData.size, bubbleData.name);
         // Override the auto-generated ID with the stored one
         bubble.id = bubbleData.id;
         // Restore velocity if available, otherwise keep randomly generated values
@@ -197,7 +197,7 @@ const loadBubbles = () => {
           bubble.dy = bubbleData.dy;
         }
         bubbles.push(bubble);
-      });
+      }
 
       console.log(`✅ Restored ${bubbles.length} bubbles with active timers`);
       return true;
@@ -217,7 +217,7 @@ const loadBubblesFromDB = async () => {
 
     // Load all bubbles with team and color info
     const [rows] = await safeExecute(`
-      SELECT b.bubble_id, b.name, b.size, b.position_x, b.position_y,
+      SELECT b.bubble_id, b.name, b.size, b.position_x, b.position_y, b.team_id,
              t.name as team_name, c.hex_code as color
       FROM bubbles b
       JOIN teams t ON b.team_id = t.team_id
@@ -228,20 +228,21 @@ const loadBubblesFromDB = async () => {
     console.log(`📂 Loading ${rows.length} bubbles from MySQL database`);
 
     // Convert database format to our bubble format
-    rows.forEach(row => {
+    for (const row of rows) {
       // Use percentage positions directly (they're already stored as 0-1 in database)
       // IMPORTANT: Convert string values from DB to numbers to prevent bugs
       const xPercent = parseFloat(row.position_x);
       const yPercent = parseFloat(row.position_y);
 
-      const bubble = createBubbleWithTimer(xPercent, yPercent, row.size, row.name);
+      const bubble = await createBubbleWithTimer(xPercent, yPercent, row.size, row.name, true);
       bubble.id = row.bubble_id;
+      bubble.teamId = row.team_id; // Set correct team ID from database
       bubble.team = row.team_name; // Add team name
       bubble.color = row.color; // Add color property
       // Note: Velocity properties will be randomly generated for now
       // Future: Add dx, dy columns to database to persist velocity
       bubbles.push(bubble);
-    });
+    }
 
     console.log(`✅ Restored ${bubbles.length} bubbles from database with active timers`);
     return rows.length > 0;
@@ -318,14 +319,45 @@ const calculateExplosionRadius = (bubbleSize) => Math.min(0.8, Math.max(0.1, (bu
 const GOD_INFLATE_AMOUNT = 100;
 const GOD_DEFLATE_AMOUNT = 10;
 
+// Helper function to get team color from database
+const getTeamColor = async (teamId) => {
+  try {
+    const [rows] = await safeExecute(`
+      SELECT t.name as team_name, c.hex_code as color
+      FROM teams t
+      JOIN colors c ON t.color_id = c.color_id
+      WHERE t.team_id = ?
+    `, [teamId]);
+
+    if (rows.length > 0) {
+      return { team: rows[0].team_name, color: rows[0].color };
+    }
+
+    // Fallback to default team if team not found
+    console.warn(`Team ${teamId} not found, using default team`);
+    return { team: 'default', color: '#4CAF50' };
+  } catch (error) {
+    console.error('Error fetching team color:', error.message);
+    return { team: 'default', color: '#4CAF50' };
+  }
+};
+
 // Helper function to create bubble with individual timer
-const createBubbleWithTimer = (xPercent, yPercent, size, name = null) => {
+const createBubbleWithTimer = async (xPercent, yPercent, size, name = null, skipTeamLookup = false) => {
   // Generate random velocity for movement
   const speed = BASE_SPEED + (Math.random() - 0.5) * SPEED_RANDOMNESS * 2;
   const angle = Math.random() * 2 * Math.PI; // Random direction
 
   // Randomly assign team ID for new bubbles (1-5)
   const randomTeamId = Math.floor(Math.random() * 5) + 1;
+
+  // Get team and color info from database (only for new bubbles, not when loading from DB)
+  const storageMode = process.env.STORAGE_MODE || 'file';
+  let teamInfo = { team: 'default', color: '#4CAF50' };
+
+  if (storageMode === 'mysql' && db && !skipTeamLookup) {
+    teamInfo = await getTeamColor(randomTeamId);
+  }
 
   const bubble = {
     id: nextBubbleId++,
@@ -336,7 +368,9 @@ const createBubbleWithTimer = (xPercent, yPercent, size, name = null) => {
     y: yPercent * 600,
     size: size,
     name: name || `Bubble ${nextBubbleId - 1}`, // default name if none provided
-    teamId: randomTeamId, // Random team ID assignment
+    teamId: randomTeamId, // Team ID assignment
+    team: teamInfo.team, // Team name from database
+    color: teamInfo.color, // Color from database
     // Movement properties
     dx: Math.cos(angle) * speed, // Velocity in x direction (percentage per frame)
     dy: Math.sin(angle) * speed, // Velocity in y direction (percentage per frame)
@@ -513,7 +547,7 @@ const initStorage = async () => {
     const loaded = await loadBubblesFromDB();
     if (!loaded) {
       // No bubbles in database, create initial bubble (centered at 50%, 50%)
-      bubbles.push(createBubbleWithTimer(0.5, 0.5, 120, "Most Honorable Reverend Bubberts Iglesias Jr 1-Aug-2025 (金)"));
+      bubbles.push(await createBubbleWithTimer(0.5, 0.5, 120, "Most Honorable Reverend Bubberts Iglesias Jr 1-Aug-2025 (金)"));
       await saveBubblesToDB(); // Save the initial bubble
       console.log("🫧 Created initial bubble in database");
     }
@@ -521,16 +555,16 @@ const initStorage = async () => {
     return true;
 
   } else {
-    return initFileStorage();
+    return await initFileStorage();
   }
 };
 
-const initFileStorage = () => {
+const initFileStorage = async () => {
   console.log('📁 Using file storage');
   // Load existing bubbles or create initial bubble
-  if (!loadBubbles()) {
+  if (!(await loadBubbles())) {
     // No saved bubbles found, create initial bubble for backward compatibility (centered at 50%, 50%)
-    bubbles.push(createBubbleWithTimer(0.5, 0.5, 120, "Original Bubble"));
+    bubbles.push(await createBubbleWithTimer(0.5, 0.5, 120, "Original Bubble"));
     console.log("🫧 Created initial bubble");
   }
   return true;
@@ -588,8 +622,8 @@ io.on('connection', (socket) => {
     });
 
     // Handle create bubble events
-    socket.on('createBubble', (data) => {
-        const newBubble = createBubbleWithTimer(data.xPercent, data.yPercent, 10, data.name); // start small
+    socket.on('createBubble', async (data) => {
+        const newBubble = await createBubbleWithTimer(data.xPercent, data.yPercent, 10, data.name); // start small
         bubbles.push(newBubble);
         console.log(`✨ New bubble "${newBubble.name}" created at (${(data.xPercent * 100).toFixed(1)}%, ${(data.yPercent * 100).toFixed(1)}%) ✨`);
 
