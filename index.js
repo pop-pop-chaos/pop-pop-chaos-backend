@@ -83,14 +83,23 @@ const ensureSchema = async () => {
 const BUBBLES_FILE = path.join(__dirname, 'bubbles.json');
 
 // Storage functions
-const saveBubbles = async () => {
-  const storageMode = process.env.STORAGE_MODE || 'file';
+let saveInProgress = false;
 
-  if (storageMode === 'mysql' && db) {
-    return await saveBubblesToDB();
-  } else {
-    // File storage fallback
-    try {
+const saveBubbles = async () => {
+  if (saveInProgress) {
+    console.log('💾 Skipping save - already in progress');
+    return false;
+  }
+  saveInProgress = true;
+
+  try {
+    const storageMode = process.env.STORAGE_MODE || 'file';
+
+    if (storageMode === 'mysql' && db) {
+      const result = await saveBubblesToDB();
+      return result;
+    } else {
+      // File storage fallback
       const bubblesForStorage = bubbles.map(({airLossTimer, movementTimer, ...bubble}) => bubble);
       fs.writeFileSync(BUBBLES_FILE, JSON.stringify({
         bubbles: bubblesForStorage,
@@ -99,10 +108,12 @@ const saveBubbles = async () => {
       }, null, 2));
       console.log(`💾 Saved ${bubblesForStorage.length} bubbles to file storage`);
       return true;
-    } catch (error) {
-      console.error('Error saving bubbles to file:', error);
-      return false;
     }
+  } catch (error) {
+    console.error('Error saving bubbles:', error);
+    return false;
+  } finally {
+    saveInProgress = false;
   }
 };
 
@@ -341,8 +352,8 @@ const createBubbleWithTimer = (xPercent, yPercent, size, name = null) => {
       bubble.x = bubble.xPercent * 1000;
       bubble.y = bubble.yPercent * 600;
 
-      // Broadcast movement updates periodically (every 5th frame to reduce network traffic)
-      if (Math.random() < 0.2) { // 20% chance = roughly every 5 frames
+      // Broadcast movement updates periodically (reduce network traffic)
+      if (Math.random() < 0.05) { // 5% chance = roughly every 20 frames
         const bubblesForClient = bubbles.map(({airLossTimer, movementTimer, ...bubble}) => bubble);
         io.emit('bubblesUpdate', {
           bubbles: bubblesForClient,
