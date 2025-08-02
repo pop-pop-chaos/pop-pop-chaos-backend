@@ -636,6 +636,33 @@ io.on('connection', (socket) => {
         });
     });
 
+    // Handle create random bubble events (Superadmin feature)
+    socket.on('createRandomBubble', async (data) => {
+        // Generate all properties server-side for security
+        const randomX = Math.random(); // Random position 0-1
+        const randomY = Math.random(); // Random position 0-1
+        const randomSize = Math.floor(Math.random() * 990) + 10; // Random size 10-999
+
+        const newBubble = await createBubbleWithTimer(randomX, randomY, randomSize, data.name);
+
+        // Apply random velocity (more dramatic than default)
+        const randomSpeed = BASE_SPEED * (2 + Math.random() * 3); // 2x to 5x normal speed
+        const randomAngle = Math.random() * 2 * Math.PI;
+        newBubble.dx = Math.cos(randomAngle) * randomSpeed;
+        newBubble.dy = Math.sin(randomAngle) * randomSpeed;
+
+        bubbles.push(newBubble);
+        console.log(`🎲 Random bubble "${newBubble.name}" created at (${(randomX * 100).toFixed(1)}%, ${(randomY * 100).toFixed(1)}%) with size ${randomSize} and velocity (${newBubble.dx.toFixed(4)}, ${newBubble.dy.toFixed(4)}) 🎲`);
+
+        // Save and broadcast updated bubbles to all connected clients
+        saveBubbles();
+        const bubblesForClient = bubbles.map(({airLossTimer, movementTimer, ...bubble}) => bubble);
+        io.emit('bubblesUpdate', {
+            bubbles: bubblesForClient,
+            reason: 'random_bubble_created'
+        });
+    });
+
     // God mode handlers for debugging
     socket.on('godInflate', (data) => {
         const bubbleIndex = bubbles.findIndex(b => b.id === data.bubbleId);
