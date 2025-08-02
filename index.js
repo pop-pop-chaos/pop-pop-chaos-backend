@@ -337,13 +337,13 @@ const createBubbleWithTimer = (xPercent, yPercent, size, name = null) => {
 
       // Check for boundary collisions and bounce
       if (bubble.xPercent - normalizedRadius <= 0 || bubble.xPercent + normalizedRadius >= 1) {
-        bubble.dx = -bubble.dx; // Reverse x velocity
+        bubble.dx = -bubble.dx * 0.9; // Reverse x velocity with friction (10% energy loss)
         // Clamp position to prevent sticking to walls
         bubble.xPercent = Math.max(normalizedRadius, Math.min(1 - normalizedRadius, bubble.xPercent));
       }
 
       if (bubble.yPercent - normalizedRadius <= 0 || bubble.yPercent + normalizedRadius >= 1) {
-        bubble.dy = -bubble.dy; // Reverse y velocity
+        bubble.dy = -bubble.dy * 0.9; // Reverse y velocity with friction (10% energy loss)
         // Clamp position to prevent sticking to walls
         bubble.yPercent = Math.max(normalizedRadius, Math.min(1 - normalizedRadius, bubble.yPercent));
       }
