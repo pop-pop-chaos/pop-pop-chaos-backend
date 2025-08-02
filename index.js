@@ -54,26 +54,42 @@ const initDatabase = async () => {
   }
 };
 
-// Ensure database connection is active, reconnect if needed
-const ensureConnection = async () => {
+// Reconnect to database with same configuration
+const reconnectDatabase = async () => {
+  console.log('🔄 Database connection lost, reconnecting...');
+  db = await mysql.createConnection({
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+    port: process.env.DB_PORT || 3306
+  });
+  console.log('✅ Database reconnected successfully');
+};
+
+// Safe database execute with automatic reconnection on connection errors
+const safeExecute = async (query, params = []) => {
   try {
-    await db.ping();
+    return await db.execute(query, params);
   } catch (error) {
-    console.log('🔄 Database connection lost, reconnecting...');
-    db = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASSWORD,
-      database: process.env.DB_NAME,
-      port: process.env.DB_PORT || 3306
-    });
-    console.log('✅ Database reconnected successfully');
+    // Check for connection-related errors
+    if (error.code === 'PROTOCOL_CONNECTION_LOST' ||
+        error.code === 'ECONNRESET' ||
+        error.code === 'EPIPE' ||
+        error.message.includes('connection is in closed state')) {
+
+      await reconnectDatabase();
+      // Retry the query once after reconnection
+      return await db.execute(query, params);
+    }
+    // Re-throw non-connection errors
+    throw error;
   }
 };
 
 const checkTableExists = async (tableName) => {
   try {
-    const [rows] = await db.execute(
+    const [rows] = await safeExecute(
       'SELECT COUNT(*) as count FROM information_schema.tables WHERE table_schema = ? AND table_name = ?',
       [process.env.DB_NAME, tableName]
     );
@@ -195,14 +211,12 @@ const loadBubbles = () => {
 // MySQL storage functions
 const loadBubblesFromDB = async () => {
   try {
-    // Ensure database connection is active
-    await ensureConnection();
     // Get next bubble ID
-    const [idRows] = await db.execute('SELECT MAX(bubble_id) as max_id FROM bubbles');
+    const [idRows] = await safeExecute('SELECT MAX(bubble_id) as max_id FROM bubbles');
     nextBubbleId = (idRows[0].max_id || 0) + 1;
 
     // Load all bubbles with color info
-    const [rows] = await db.execute(`
+    const [rows] = await safeExecute(`
       SELECT b.bubble_id, b.name, b.size, b.position_x, b.position_y,
              c.hex_code as color
       FROM bubbles b
@@ -237,17 +251,15 @@ const loadBubblesFromDB = async () => {
 
 const saveBubblesToDB = async () => {
   try {
-    // Ensure database connection is active
-    await ensureConnection();
     // Get current bubble IDs in database
-    const [existingRows] = await db.execute('SELECT bubble_id FROM bubbles');
+    const [existingRows] = await safeExecute('SELECT bubble_id FROM bubbles');
     const existingIds = new Set(existingRows.map(row => row.bubble_id));
     const currentIds = new Set(bubbles.map(bubble => bubble.id));
 
     // Delete bubbles that no longer exist in memory
     for (const existingId of existingIds) {
       if (!currentIds.has(existingId)) {
-        await db.execute('DELETE FROM bubbles WHERE bubble_id = ?', [existingId]);
+        await safeExecute('DELETE FROM bubbles WHERE bubble_id = ?', [existingId]);
         console.log(`🗑️  Removed bubble ${existingId} from database`);
       }
     }
@@ -258,7 +270,7 @@ const saveBubblesToDB = async () => {
       const position_x = bubble.xPercent;
       const position_y = bubble.yPercent;
 
-      await db.execute(`
+      await safeExecute(`
         INSERT INTO bubbles (bubble_id, name, size, position_x, position_y, velocity_dx, velocity_dy, color_id)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
