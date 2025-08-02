@@ -24,6 +24,8 @@ CREATE TABLE bubbles (
   size INT NOT NULL DEFAULT 10,
   position_x DECIMAL(8,3) NOT NULL,  -- Store as percentage of game area (0.0-1.0)
   position_y DECIMAL(8,3) NOT NULL,  -- This makes it screen-size independent!
+  velocity_dx DECIMAL(8,6) NOT NULL DEFAULT 0.0,  -- X velocity component
+  velocity_dy DECIMAL(8,6) NOT NULL DEFAULT 0.0,  -- Y velocity component
   color_id INT NOT NULL DEFAULT 1,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

@@ -223,15 +223,17 @@ const saveBubblesToDB = async () => {
       const position_y = bubble.yPercent;
 
       await db.execute(`
-        INSERT INTO bubbles (bubble_id, name, size, position_x, position_y, color_id)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO bubbles (bubble_id, name, size, position_x, position_y, velocity_dx, velocity_dy, color_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
           name = VALUES(name),
           size = VALUES(size),
           position_x = VALUES(position_x),
           position_y = VALUES(position_y),
+          velocity_dx = VALUES(velocity_dx),
+          velocity_dy = VALUES(velocity_dy),
           updated_at = CURRENT_TIMESTAMP
-      `, [bubble.id, bubble.name, bubble.size, position_x, position_y, 1]); // default to green (color_id=1)
+      `, [bubble.id, bubble.name, bubble.size, position_x, position_y, bubble.dx || 0, bubble.dy || 0, 1]); // default to green (color_id=1)
     }
 
     console.log(`💾 Saved ${bubbles.length} bubbles to MySQL database`);
