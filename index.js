@@ -39,7 +39,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Session configuration
-app.use(session({
+const sessionMiddleware = session({
   secret: process.env.SESSION_SECRET || 'your-secret-key-change-this-in-production',
   resave: false,
   saveUninitialized: false,
@@ -48,7 +48,9 @@ app.use(session({
     httpOnly: true,
     maxAge: 24 * 60 * 60 * 1000 // 24 hours
   }
-}));
+});
+
+app.use(sessionMiddleware);
 
 const io = new Server(server, {
   cors: {
@@ -56,6 +58,11 @@ const io = new Server(server, {
     methods: ["GET", "POST"],
     credentials: true
   }
+});
+
+// Share session middleware with Socket.io
+io.use((socket, next) => {
+  sessionMiddleware(socket.request, {}, next);
 });
 
 const port = process.env.PORT || 8080;
@@ -824,12 +831,16 @@ io.on('connection', (socket) => {
     // Handle create random bubble events (Superadmin feature)
     socket.on('createRandomBubble', async (data) => {
         // Check if user is authenticated and is superadmin
-        // Note: For now, we'll implement a basic check. In production, we'd want proper session sharing
-        // TODO: Implement proper session sharing between Express and Socket.io
-        console.log(`🔍 Random bubble creation requested by socket ${socket.id}`);
+        const session = socket.request.session;
+        const isAuthenticated = session && session.userId;
+        const isSuperadmin = session && session.isSuperadmin;
 
-        // For now, allow the request but log it for manual verification
-        // In next iteration, we'll implement proper session sharing
+        console.log(`🔍 Random bubble creation requested by socket ${socket.id}, authenticated: ${isAuthenticated}, superadmin: ${isSuperadmin}`);
+
+        if (!isAuthenticated || !isSuperadmin) {
+            console.log(`❌ Random bubble creation denied: User not authenticated or not superadmin`);
+            return;
+        }
 
         // Generate all properties server-side for security
         const randomX = Math.random(); // Random position 0-1
@@ -845,7 +856,7 @@ io.on('connection', (socket) => {
         newBubble.dy = Math.sin(randomAngle) * randomSpeed;
 
         bubbles.push(newBubble);
-        console.log(`🎲 Random bubble "${newBubble.name}" created at (${(randomX * 100).toFixed(1)}%, ${(randomY * 100).toFixed(1)}%) with size ${randomSize} and velocity (${newBubble.dx.toFixed(4)}, ${newBubble.dy.toFixed(4)}) 🎲`);
+        console.log(`🎲 Random bubble "${newBubble.name}" created by ${session.username} at (${(randomX * 100).toFixed(1)}%, ${(randomY * 100).toFixed(1)}%) with size ${randomSize} and velocity (${newBubble.dx.toFixed(4)}, ${newBubble.dy.toFixed(4)}) 🎲`);
 
         // Save and broadcast updated bubbles to all connected clients
         saveBubbles();
@@ -906,9 +917,21 @@ io.on('connection', (socket) => {
     });
 
     socket.on('godPop', (data) => {
+        // Check if user is authenticated and is superadmin
+        const session = socket.request.session;
+        const isAuthenticated = session && session.userId;
+        const isSuperadmin = session && session.isSuperadmin;
+
+        console.log(`🔍 God pop requested by socket ${socket.id}, authenticated: ${isAuthenticated}, superadmin: ${isSuperadmin}`);
+
+        if (!isAuthenticated || !isSuperadmin) {
+            console.log(`❌ God pop denied: User not authenticated or not superadmin`);
+            return;
+        }
+
         const bubble = bubbles.find(b => b.id === data.bubbleId);
         if (bubble) {
-            console.log(`⚡💥 GOD POP: ${bubble.name} instantly destroyed! 💥⚡`);
+            console.log(`⚡💥 GOD POP: ${bubble.name} instantly destroyed by ${session.username}! 💥⚡`);
 
             // Apply explosion physics and remove bubble
             BurstYourBubble(bubble);
