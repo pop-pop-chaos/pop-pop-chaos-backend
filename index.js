@@ -60,6 +60,9 @@ const io = new Server(server, {
 
 const port = process.env.PORT || 8080;
 
+// Track connected players
+let connectedPlayers = 0;
+
 // Database configuration
 let db = null;
 
@@ -767,6 +770,11 @@ app.get('/auth/me', (req, res) => {
 io.on('connection', (socket) => {
     console.log(`User connected: ${socket.id}`);
 
+    // Increment player count and broadcast update
+    connectedPlayers++;
+    console.log(`Connected players: ${connectedPlayers}`);
+    io.emit('playerCountUpdate', { count: connectedPlayers });
+
     // Send current bubbles to newly connected client (without timer property)
     const bubblesForClient = bubbles.map(({airLossTimer, movementTimer, ...bubble}) => bubble);
     socket.emit('bubblesUpdate', {
@@ -914,9 +922,19 @@ io.on('connection', (socket) => {
         }
     });
 
+    // Handle get player count request
+    socket.on('getPlayerCount', () => {
+        socket.emit('playerCountUpdate', { count: connectedPlayers });
+    });
+
     // Handle disconnection
     socket.on('disconnect', () => {
         console.log(`User disconnected: ${socket.id}`);
+
+        // Decrement player count and broadcast update
+        connectedPlayers--;
+        console.log(`Connected players: ${connectedPlayers}`);
+        io.emit('playerCountUpdate', { count: connectedPlayers });
     });
 });
 
