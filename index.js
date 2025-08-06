@@ -62,7 +62,24 @@ const io = new Server(server, {
 
 // Share session middleware with Socket.io
 io.use((socket, next) => {
-  sessionMiddleware(socket.request, {}, next);
+  sessionMiddleware(socket.request, socket.request.res || {}, (err) => {
+    if (err) {
+      console.log('Session middleware error:', err);
+      return next(err);
+    }
+    
+    // Debug session info
+    const session = socket.request.session;
+    console.log(`Socket ${socket.id} session:`, {
+      hasSession: !!session,
+      userId: session?.userId,
+      username: session?.username,
+      isSuperadmin: session?.isSuperadmin,
+      cookies: socket.request.headers.cookie ? 'present' : 'missing'
+    });
+    
+    next();
+  });
 });
 
 const port = process.env.PORT || 8080;
