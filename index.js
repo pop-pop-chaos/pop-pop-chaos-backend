@@ -588,6 +588,25 @@ const applyExplosionForce = (burstBubble) => {
   });
 };
 
+// Function to generate current date with Japanese day of the week kanji
+const formatDateWithJapaneseDay = () => {
+  const now = new Date();
+  
+  // Array of Japanese day of the week kanji
+  const japaneseWeekdays = ['日', '月', '火', '水', '木', '金', '土'];
+  
+  // Array of month abbreviations
+  const monthAbbrevs = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                       'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  
+  const day = now.getDate();
+  const month = monthAbbrevs[now.getMonth()];
+  const year = now.getFullYear();
+  const dayOfWeek = japaneseWeekdays[now.getDay()];
+  
+  return `${day}-${month}-${year} (${dayOfWeek})`;
+};
+
 // Initialize storage based on STORAGE_MODE
 const initStorage = async () => {
   const storageMode = process.env.STORAGE_MODE || 'file';
@@ -616,7 +635,7 @@ const initStorage = async () => {
     const loaded = await loadBubblesFromDB();
     if (!loaded) {
       // No bubbles in database, create initial bubble (centered at 50%, 50%)
-      bubbles.push(await createBubbleWithTimer(0.5, 0.5, 120, "Most Honorable Reverend Bubberts Iglesias Jr 1-Aug-2025 (金)"));
+      bubbles.push(await createBubbleWithTimer(0.5, 0.5, 120, `Most Honorable Reverend Bubberts Iglesias Jr ${formatDateWithJapaneseDay()}`));
       await saveBubblesToDB(); // Save the initial bubble
       console.log("🫧 Created initial bubble in database");
     }
