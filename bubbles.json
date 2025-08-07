@@ -2,12 +2,19 @@
   "bubbles": [
     {
       "id": 1,
-      "x": 178,
-      "y": 145,
-      "size": 130,
-      "name": "Most Honorable Reverend Bubberts Iglesias Jr 1-Aug-2025 (金)"
+      "xPercent": 0.3273784470910666,
+      "yPercent": 0.9100080007167802,
+      "x": 327.3784470910666,
+      "y": 546.0048004300681,
+      "size": 83,
+      "name": "Most Honorable Reverend Bubberts Iglesias Jr 1-Aug-2025 (金)",
+      "teamId": 3,
+      "team": "default",
+      "color": "#4CAF50",
+      "dx": -0.0006277458204030981,
+      "dy": 0.0005442321110744133
     }
   ],
-  "nextBubbleId": 2,
-  "timestamp": "2025-08-01T09:57:37.872Z"
+  "nextBubbleId": 5,
+  "timestamp": "2025-08-07T06:06:25.829Z"
 }
