@@ -1,8 +1,13 @@
 <?php
-$host = $_ENV['DB_HOST'] ?? 'localhost';
-$dbname = $_ENV['DB_NAME'] ?? 'pop_pop_chaos';
-$username = $_ENV['DB_USER'] ?? 'root';
-$password = $_ENV['DB_PASSWORD'] ?? '';
+// Try environment variables first, then fall back to config file
+if (file_exists(__DIR__ . '/.env.php')) {
+    include __DIR__ . '/.env.php';
+}
+
+$host = $_ENV['DB_HOST'] ?? $dbConfig['host'] ?? 'localhost';
+$dbname = $_ENV['DB_NAME'] ?? $dbConfig['dbname'] ?? 'pop_pop_chaos';
+$username = $_ENV['DB_USER'] ?? $dbConfig['username'] ?? 'root';
+$password = $_ENV['DB_PASSWORD'] ?? $dbConfig['password'] ?? '';
 
 try {
     $pdo = new PDO(
@@ -20,4 +25,3 @@ try {
     echo json_encode(['error' => 'Database connection failed: ' . $e->getMessage()]);
     exit();
 }
-?>

@@ -34,7 +34,7 @@ switch ($method) {
 
 function getColors() {
     global $pdo;
-    
+
     try {
         $stmt = $pdo->prepare("
             SELECT color_id as id, name, hex_code as hexCode
@@ -43,11 +43,11 @@ function getColors() {
         ");
         $stmt->execute();
         $colors = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
+
         foreach ($colors as &$color) {
             $color['id'] = (int)$color['id'];
         }
-        
+
         echo json_encode([
             'colors' => $colors,
             'timestamp' => date('c')
@@ -60,27 +60,27 @@ function getColors() {
 
 function createColor() {
     global $pdo;
-    
+
     $input = json_decode(file_get_contents('php://input'), true);
-    
+
     if (!isset($input['name']) || !isset($input['hexCode'])) {
         http_response_code(400);
         echo json_encode(['error' => 'Missing required fields']);
         return;
     }
-    
+
     if (!preg_match('/^#[0-9A-Fa-f]{6}$/', $input['hexCode'])) {
         http_response_code(400);
         echo json_encode(['error' => 'Invalid hex color code']);
         return;
     }
-    
+
     try {
         $stmt = $pdo->prepare("INSERT INTO colors (name, hex_code) VALUES (?, ?)");
         $stmt->execute([$input['name'], $input['hexCode']]);
-        
+
         $colorId = $pdo->lastInsertId();
-        
+
         echo json_encode([
             'success' => true,
             'color_id' => $colorId,
@@ -94,19 +94,19 @@ function createColor() {
 
 function updateColor() {
     global $pdo;
-    
+
     $input = json_decode(file_get_contents('php://input'), true);
-    
+
     if (!isset($input['id'])) {
         http_response_code(400);
         echo json_encode(['error' => 'Missing color ID']);
         return;
     }
-    
+
     try {
         $fields = [];
         $values = [];
-        
+
         if (isset($input['name'])) {
             $fields[] = 'name = ?';
             $values[] = $input['name'];
@@ -120,19 +120,19 @@ function updateColor() {
             $fields[] = 'hex_code = ?';
             $values[] = $input['hexCode'];
         }
-        
+
         if (empty($fields)) {
             http_response_code(400);
             echo json_encode(['error' => 'No fields to update']);
             return;
         }
-        
+
         $values[] = $input['id'];
-        
+
         $sql = "UPDATE colors SET " . implode(', ', $fields) . " WHERE color_id = ?";
         $stmt = $pdo->prepare($sql);
         $stmt->execute($values);
-        
+
         echo json_encode([
             'success' => true,
             'message' => 'Color updated successfully'
@@ -145,19 +145,19 @@ function updateColor() {
 
 function deleteColor() {
     global $pdo;
-    
+
     $colorId = $_GET['id'] ?? null;
-    
+
     if (!$colorId) {
         http_response_code(400);
         echo json_encode(['error' => 'Missing color ID']);
         return;
     }
-    
+
     try {
         $stmt = $pdo->prepare("DELETE FROM colors WHERE color_id = ?");
         $stmt->execute([$colorId]);
-        
+
         echo json_encode([
             'success' => true,
             'message' => 'Color deleted successfully'

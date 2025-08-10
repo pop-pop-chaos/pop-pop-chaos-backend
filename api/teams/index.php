@@ -34,7 +34,7 @@ switch ($method) {
 
 function getTeams() {
     global $pdo;
-    
+
     try {
         $stmt = $pdo->prepare("
             SELECT t.team_id as id, t.name, c.hex_code as color, c.name as colorName
@@ -44,11 +44,11 @@ function getTeams() {
         ");
         $stmt->execute();
         $teams = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
+
         foreach ($teams as &$team) {
             $team['id'] = (int)$team['id'];
         }
-        
+
         echo json_encode([
             'teams' => $teams,
             'timestamp' => date('c')
@@ -61,21 +61,21 @@ function getTeams() {
 
 function createTeam() {
     global $pdo;
-    
+
     $input = json_decode(file_get_contents('php://input'), true);
-    
+
     if (!isset($input['name']) || !isset($input['colorId'])) {
         http_response_code(400);
         echo json_encode(['error' => 'Missing required fields']);
         return;
     }
-    
+
     try {
         $stmt = $pdo->prepare("INSERT INTO teams (name, color_id) VALUES (?, ?)");
         $stmt->execute([$input['name'], $input['colorId']]);
-        
+
         $teamId = $pdo->lastInsertId();
-        
+
         echo json_encode([
             'success' => true,
             'team_id' => $teamId,
@@ -89,19 +89,19 @@ function createTeam() {
 
 function updateTeam() {
     global $pdo;
-    
+
     $input = json_decode(file_get_contents('php://input'), true);
-    
+
     if (!isset($input['id'])) {
         http_response_code(400);
         echo json_encode(['error' => 'Missing team ID']);
         return;
     }
-    
+
     try {
         $fields = [];
         $values = [];
-        
+
         if (isset($input['name'])) {
             $fields[] = 'name = ?';
             $values[] = $input['name'];
@@ -110,19 +110,19 @@ function updateTeam() {
             $fields[] = 'color_id = ?';
             $values[] = $input['colorId'];
         }
-        
+
         if (empty($fields)) {
             http_response_code(400);
             echo json_encode(['error' => 'No fields to update']);
             return;
         }
-        
+
         $values[] = $input['id'];
-        
+
         $sql = "UPDATE teams SET " . implode(', ', $fields) . " WHERE team_id = ?";
         $stmt = $pdo->prepare($sql);
         $stmt->execute($values);
-        
+
         echo json_encode([
             'success' => true,
             'message' => 'Team updated successfully'
@@ -135,19 +135,19 @@ function updateTeam() {
 
 function deleteTeam() {
     global $pdo;
-    
+
     $teamId = $_GET['id'] ?? null;
-    
+
     if (!$teamId) {
         http_response_code(400);
         echo json_encode(['error' => 'Missing team ID']);
         return;
     }
-    
+
     try {
         $stmt = $pdo->prepare("DELETE FROM teams WHERE team_id = ?");
         $stmt->execute([$teamId]);
-        
+
         echo json_encode([
             'success' => true,
             'message' => 'Team deleted successfully'
@@ -157,4 +157,3 @@ function deleteTeam() {
         echo json_encode(['error' => 'Database error: ' . $e->getMessage()]);
     }
 }
-?>

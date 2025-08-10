@@ -34,10 +34,10 @@ switch ($method) {
 
 function getBubbles() {
     global $pdo;
-    
+
     try {
         $stmt = $pdo->prepare("
-            SELECT b.bubble_id as id, b.name, b.size, 
+            SELECT b.bubble_id as id, b.name, b.size,
                    b.position_x as xPercent, b.position_y as yPercent,
                    b.velocity_dx as dx, b.velocity_dy as dy,
                    t.team_id as teamId, t.name as team, c.hex_code as color
@@ -48,7 +48,7 @@ function getBubbles() {
         ");
         $stmt->execute();
         $bubbles = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
+
         foreach ($bubbles as &$bubble) {
             $bubble['id'] = (int)$bubble['id'];
             $bubble['size'] = (int)$bubble['size'];
@@ -58,7 +58,7 @@ function getBubbles() {
             $bubble['dx'] = (float)$bubble['dx'];
             $bubble['dy'] = (float)$bubble['dy'];
         }
-        
+
         echo json_encode([
             'bubbles' => $bubbles,
             'timestamp' => date('c')
@@ -71,28 +71,28 @@ function getBubbles() {
 
 function createBubble() {
     global $pdo;
-    
+
     $input = json_decode(file_get_contents('php://input'), true);
-    
+
     if (!isset($input['name']) || !isset($input['xPercent']) || !isset($input['yPercent'])) {
         http_response_code(400);
         echo json_encode(['error' => 'Missing required fields']);
         return;
     }
-    
+
     try {
         $stmt = $pdo->prepare("SELECT COALESCE(MAX(bubble_id), 0) + 1 as next_id FROM bubbles");
         $stmt->execute();
         $nextId = $stmt->fetch(PDO::FETCH_ASSOC)['next_id'];
-        
+
         $stmt = $pdo->prepare("
             INSERT INTO bubbles (bubble_id, name, position_x, position_y, size, team_id)
             VALUES (?, ?, ?, ?, ?, ?)
         ");
-        
+
         $teamId = $input['teamId'] ?? 1;
         $size = $input['size'] ?? 10;
-        
+
         $stmt->execute([
             $nextId,
             $input['name'],
@@ -101,9 +101,9 @@ function createBubble() {
             $size,
             $teamId
         ]);
-        
+
         logBubbleEvent($nextId, 'created', 0, $size);
-        
+
         echo json_encode([
             'success' => true,
             'bubble_id' => $nextId,
@@ -117,29 +117,29 @@ function createBubble() {
 
 function updateBubble() {
     global $pdo;
-    
+
     $input = json_decode(file_get_contents('php://input'), true);
-    
+
     if (!isset($input['id'])) {
         http_response_code(400);
         echo json_encode(['error' => 'Missing bubble ID']);
         return;
     }
-    
+
     try {
         $stmt = $pdo->prepare("SELECT size FROM bubbles WHERE bubble_id = ?");
         $stmt->execute([$input['id']]);
         $currentBubble = $stmt->fetch(PDO::FETCH_ASSOC);
-        
+
         if (!$currentBubble) {
             http_response_code(404);
             echo json_encode(['error' => 'Bubble not found']);
             return;
         }
-        
+
         $fields = [];
         $values = [];
-        
+
         if (isset($input['size'])) {
             $fields[] = 'size = ?';
             $values[] = $input['size'];
@@ -160,19 +160,19 @@ function updateBubble() {
             $fields[] = 'velocity_dy = ?';
             $values[] = $input['dy'];
         }
-        
+
         if (empty($fields)) {
             http_response_code(400);
             echo json_encode(['error' => 'No fields to update']);
             return;
         }
-        
+
         $values[] = $input['id'];
-        
+
         $sql = "UPDATE bubbles SET " . implode(', ', $fields) . " WHERE bubble_id = ?";
         $stmt = $pdo->prepare($sql);
         $stmt->execute($values);
-        
+
         if (isset($input['size'])) {
             $eventType = 'clicked';
             if (isset($input['eventType'])) {
@@ -180,7 +180,7 @@ function updateBubble() {
             }
             logBubbleEvent($input['id'], $eventType, $currentBubble['size'], $input['size']);
         }
-        
+
         echo json_encode([
             'success' => true,
             'message' => 'Bubble updated successfully'
@@ -193,31 +193,31 @@ function updateBubble() {
 
 function deleteBubble() {
     global $pdo;
-    
+
     $bubbleId = $_GET['id'] ?? null;
-    
+
     if (!$bubbleId) {
         http_response_code(400);
         echo json_encode(['error' => 'Missing bubble ID']);
         return;
     }
-    
+
     try {
         $stmt = $pdo->prepare("SELECT size FROM bubbles WHERE bubble_id = ?");
         $stmt->execute([$bubbleId]);
         $currentBubble = $stmt->fetch(PDO::FETCH_ASSOC);
-        
+
         if (!$currentBubble) {
             http_response_code(404);
             echo json_encode(['error' => 'Bubble not found']);
             return;
         }
-        
+
         $stmt = $pdo->prepare("DELETE FROM bubbles WHERE bubble_id = ?");
         $stmt->execute([$bubbleId]);
-        
+
         logBubbleEvent($bubbleId, 'popped', $currentBubble['size'], 0);
-        
+
         echo json_encode([
             'success' => true,
             'message' => 'Bubble deleted successfully'
@@ -230,7 +230,7 @@ function deleteBubble() {
 
 function logBubbleEvent($bubbleId, $eventType, $sizeBefore, $sizeAfter) {
     global $pdo;
-    
+
     try {
         $stmt = $pdo->prepare("
             INSERT INTO bubble_events (bubble_id, event_type, size_before, size_after, player_ip)
