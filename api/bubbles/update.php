@@ -18,8 +18,9 @@ if ($_SERVER['REQUEST_METHOD'] !== 'PUT') {
 require_once '../../config/database.php';
 
 $input = json_decode(file_get_contents('php://input'), true);
+$bubbleId = $_GET['id'] ?? $input['id'] ?? null;
 
-if (!isset($input['id'])) {
+if (!$bubbleId) {
     http_response_code(400);
     echo json_encode(['error' => 'Missing bubble ID']);
     exit();
@@ -27,7 +28,7 @@ if (!isset($input['id'])) {
 
 try {
     $stmt = $pdo->prepare("SELECT size FROM bubbles WHERE bubble_id = ?");
-    $stmt->execute([$input['id']]);
+    $stmt->execute([$bubbleId]);
     $currentBubble = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$currentBubble) {
@@ -74,18 +75,19 @@ try {
         exit();
     }
 
-    $values[] = $input['id'];
+    $values[] = $bubbleId;
 
     $sql = "UPDATE bubbles SET " . implode(', ', $fields) . " WHERE bubble_id = ?";
     $stmt = $pdo->prepare($sql);
     $stmt->execute($values);
+    $rowsAffected = $stmt->rowCount();
 
     if (isset($input['size'])) {
         $eventType = 'clicked';
         if (isset($input['eventType'])) {
             $eventType = $input['eventType'];
         }
-        logBubbleEvent($input['id'], $eventType, $currentBubble['size'], $input['size']);
+        logBubbleEvent($bubbleId, $eventType, $currentBubble['size'], $input['size']);
     }
 
     $stmt = $pdo->prepare("
@@ -98,7 +100,7 @@ try {
         JOIN colors c ON t.color_id = c.color_id
         WHERE b.bubble_id = ?
     ");
-    $stmt->execute([$input['id']]);
+    $stmt->execute([$bubbleId]);
     $bubble = $stmt->fetch(PDO::FETCH_ASSOC);
 
     $bubble['id'] = (int)$bubble['id'];
@@ -108,6 +110,17 @@ try {
     $bubble['yPercent'] = (float)$bubble['yPercent'];
     $bubble['dx'] = (float)$bubble['dx'];
     $bubble['dy'] = (float)$bubble['dy'];
+
+    // Remove debug info for production (uncomment to debug)
+    // $bubble['debug'] = [
+    //     'bubbleId' => $bubbleId,
+    //     'fieldsUpdated' => $fields,
+    //     'valuesUsed' => array_slice($values, 0, -1),
+    //     'rowsAffected' => $rowsAffected,
+    //     'sql' => $sql,
+    //     'inputReceived' => $input,
+    //     'originalSize' => $currentBubble['size']
+    // ];
 
     echo json_encode($bubble);
 } catch (PDOException $e) {
