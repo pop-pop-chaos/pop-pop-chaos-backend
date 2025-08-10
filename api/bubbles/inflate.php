@@ -1,7 +1,7 @@
 <?php
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: https://poppopchaos.chatforest.com');
-header('Access-Control-Allow-Methods: PUT, OPTIONS');
+header('Access-Control-Allow-Methods: POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -9,7 +9,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit();
 }
 
-if ($_SERVER['REQUEST_METHOD'] !== 'PUT') {
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     echo json_encode(['error' => 'Method not allowed']);
     exit();
@@ -18,11 +18,12 @@ if ($_SERVER['REQUEST_METHOD'] !== 'PUT') {
 require_once '../../config/database.php';
 
 $input = json_decode(file_get_contents('php://input'), true);
-$bubbleId = $_GET['id'] ?? $input['id'] ?? null;
+$bubbleId = $input['bubble_id'] ?? null;
+$action = $input['action'] ?? 'inflate';
 
 if (!$bubbleId) {
     http_response_code(400);
-    echo json_encode(['error' => 'Missing bubble ID']);
+    echo json_encode(['error' => 'Missing bubble_id']);
     exit();
 }
 
@@ -37,58 +38,19 @@ try {
         exit();
     }
 
-    $fields = [];
-    $values = [];
+    $currentSize = $currentBubble['size'];
+    $increment = ($action === 'god_inflate') ? 100 : 1;
+    $newSize = $currentSize + $increment;
 
-    if (isset($input['size'])) {
-        $fields[] = 'size = ?';
-        $values[] = $input['size'];
-    }
-    if (isset($input['xPercent'])) {
-        $fields[] = 'position_x = ?';
-        $values[] = $input['xPercent'];
-    }
-    if (isset($input['yPercent'])) {
-        $fields[] = 'position_y = ?';
-        $values[] = $input['yPercent'];
-    }
-    if (isset($input['dx'])) {
-        $fields[] = 'velocity_dx = ?';
-        $values[] = $input['dx'];
-    }
-    if (isset($input['dy'])) {
-        $fields[] = 'velocity_dy = ?';
-        $values[] = $input['dy'];
-    }
-    if (isset($input['name'])) {
-        $fields[] = 'name = ?';
-        $values[] = $input['name'];
-    }
-    if (isset($input['teamId'])) {
-        $fields[] = 'team_id = ?';
-        $values[] = $input['teamId'];
+    // Cap maximum size to prevent overflow
+    if ($newSize > 2000) {
+        $newSize = 2000;
     }
 
-    if (empty($fields)) {
-        http_response_code(400);
-        echo json_encode(['error' => 'No fields to update']);
-        exit();
-    }
+    $stmt = $pdo->prepare("UPDATE bubbles SET size = ? WHERE bubble_id = ?");
+    $stmt->execute([$newSize, $bubbleId]);
 
-    $values[] = $bubbleId;
-
-    $sql = "UPDATE bubbles SET " . implode(', ', $fields) . " WHERE bubble_id = ?";
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($values);
-    $rowsAffected = $stmt->rowCount();
-
-    if (isset($input['size'])) {
-        $eventType = 'clicked';
-        if (isset($input['eventType'])) {
-            $eventType = $input['eventType'];
-        }
-        logBubbleEvent($bubbleId, $eventType, $currentBubble['size'], $input['size']);
-    }
+    logBubbleEvent($bubbleId, $action, $currentSize, $newSize);
 
     $stmt = $pdo->prepare("
         SELECT b.bubble_id as id, b.name, b.size,
@@ -110,17 +72,6 @@ try {
     $bubble['yPercent'] = (float)$bubble['yPercent'];
     $bubble['dx'] = (float)$bubble['dx'];
     $bubble['dy'] = (float)$bubble['dy'];
-
-    // Remove debug info for production (uncomment to debug)
-    // $bubble['debug'] = [
-    //     'bubbleId' => $bubbleId,
-    //     'fieldsUpdated' => $fields,
-    //     'valuesUsed' => array_slice($values, 0, -1),
-    //     'rowsAffected' => $rowsAffected,
-    //     'sql' => $sql,
-    //     'inputReceived' => $input,
-    //     'originalSize' => $currentBubble['size']
-    // ];
 
     echo json_encode($bubble);
 } catch (PDOException $e) {
