@@ -67,7 +67,7 @@ io.use((socket, next) => {
       console.log('Session middleware error:', err);
       return next(err);
     }
-
+    
     // Debug session info
     const session = socket.request.session;
     console.log(`Socket ${socket.id} session:`, {
@@ -77,7 +77,7 @@ io.use((socket, next) => {
       isSuperadmin: session?.isSuperadmin,
       cookies: socket.request.headers.cookie ? 'present' : 'missing'
     });
-
+    
     next();
   });
 });
@@ -203,8 +203,41 @@ const BUBBLES_FILE = path.join(__dirname, 'bubbles.json');
 let saveInProgress = false;
 
 const saveBubbles = async () => {
-  console.log('💾 Skipping save - READ_ONLY mode enabled');
-  return false;
+  // Check if read-only mode is enabled
+  if (process.env.READ_ONLY === 'true') {
+    console.log('💾 Skipping save - READ_ONLY mode enabled');
+    return false;
+  }
+
+  if (saveInProgress) {
+    console.log('💾 Skipping save - already in progress');
+    return false;
+  }
+  saveInProgress = true;
+
+  try {
+    const storageMode = process.env.STORAGE_MODE || 'file';
+
+    if (storageMode === 'mysql' && db) {
+      const result = await saveBubblesToDB();
+      return result;
+    } else {
+      // File storage fallback
+      const bubblesForStorage = bubbles.map(({airLossTimer, movementTimer, ...bubble}) => bubble);
+      fs.writeFileSync(BUBBLES_FILE, JSON.stringify({
+        bubbles: bubblesForStorage,
+        nextBubbleId: nextBubbleId,
+        timestamp: new Date().toISOString()
+      }, null, 2));
+      console.log(`💾 Saved ${bubblesForStorage.length} bubbles to file storage`);
+      return true;
+    }
+  } catch (error) {
+    console.error('Error saving bubbles:', error);
+    return false;
+  } finally {
+    saveInProgress = false;
+  }
 };
 
 const loadBubbles = async () => {
@@ -564,19 +597,19 @@ const applyExplosionForce = (burstBubble) => {
 // Function to generate current date with Japanese day of the week kanji
 const formatDateWithJapaneseDay = () => {
   const now = new Date();
-
+  
   // Array of Japanese day of the week kanji
   const japaneseWeekdays = ['日', '月', '火', '水', '木', '金', '土'];
-
+  
   // Array of month abbreviations
-  const monthAbbrevs = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  const monthAbbrevs = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
                        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
+  
   const day = now.getDate();
   const month = monthAbbrevs[now.getMonth()];
   const year = now.getFullYear();
   const dayOfWeek = japaneseWeekdays[now.getDay()];
-
+  
   return `${day}-${month}-${year} (${dayOfWeek})`;
 };
 
