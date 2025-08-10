@@ -203,6 +203,12 @@ const BUBBLES_FILE = path.join(__dirname, 'bubbles.json');
 let saveInProgress = false;
 
 const saveBubbles = async () => {
+  // Check if read-only mode is enabled
+  if (process.env.READ_ONLY === 'true') {
+    console.log('💾 Skipping save - READ_ONLY mode enabled');
+    return false;
+  }
+
   if (saveInProgress) {
     console.log('💾 Skipping save - already in progress');
     return false;
