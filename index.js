@@ -580,6 +580,36 @@ const formatDateWithJapaneseDay = () => {
   return `${day}-${month}-${year} (${dayOfWeek})`;
 };
 
+// Sync from database periodically when in read-only mode
+const syncFromDatabase = async () => {
+  if (process.env.READ_ONLY === 'true' && db) {
+    try {
+      console.log('🔄 Syncing bubbles from database...');
+      
+      // Clear current bubbles (but keep their timers running)
+      for (const bubble of bubbles) {
+        if (bubble.airLossTimer) clearTimeout(bubble.airLossTimer);
+        if (bubble.movementTimer) clearInterval(bubble.movementTimer);
+      }
+      bubbles.length = 0;
+      
+      // Load fresh data from database
+      await loadBubblesFromDB();
+      
+      // Broadcast updated bubbles to all connected clients
+      const bubblesForClient = bubbles.map(({airLossTimer, movementTimer, ...bubble}) => bubble);
+      io.emit('bubblesUpdate', {
+        bubbles: bubblesForClient,
+        reason: 'database_sync'
+      });
+      
+      console.log(`✅ Synced ${bubbles.length} bubbles from database`);
+    } catch (error) {
+      console.error('❌ Database sync error:', error.message);
+    }
+  }
+};
+
 // Initialize storage based on STORAGE_MODE
 const initStorage = async () => {
   const storageMode = process.env.STORAGE_MODE || 'file';
@@ -634,6 +664,12 @@ const initFileStorage = async () => {
 // Initialize storage
 initStorage().then(() => {
   console.log('🚀 Storage initialization complete');
+  
+  // Start periodic database sync in read-only mode
+  if (process.env.READ_ONLY === 'true') {
+    console.log('🔄 Starting database sync timer (every 5 seconds)');
+    setInterval(syncFromDatabase, 5000); // Sync every 5 seconds
+  }
 }).catch(error => {
   console.error('💥 Storage initialization failed:', error);
   process.exit(1);
