@@ -43,8 +43,19 @@ try {
     $newSize = $currentSize + $increment;
 
     // Cap maximum size to prevent overflow
-    if ($newSize > 2000) {
-        $newSize = 2000;
+    if ($newSize > 1000) {
+        // Bubble burst! Delete it
+        $stmt = $pdo->prepare("DELETE FROM bubbles WHERE bubble_id = ?");
+        $stmt->execute([$bubbleId]);
+
+        logBubbleEvent($bubbleId, 'burst', $currentSize, 0);
+
+        echo json_encode([
+            'success' => true,
+            'action' => 'burst',
+            'message' => 'Bubble burst from over-inflation!'
+        ]);
+        exit();
     }
 
     $stmt = $pdo->prepare("UPDATE bubbles SET size = ? WHERE bubble_id = ?");
