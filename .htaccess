@@ -1,19 +1,28 @@
 RewriteEngine On
 
+# Prevent trailing slash redirects for API endpoints
+DirectorySlash Off
+
 # Handle CORS preflight requests
 RewriteCond %{REQUEST_METHOD} OPTIONS
 RewriteRule ^(.*)$ $1 [R=200,L]
 
 # API routing - route by HTTP method
+# Handle POST to /api/bubbles (both with and without trailing slash)
+RewriteCond %{REQUEST_METHOD} POST
+RewriteRule ^api/bubbles/?$ api/bubbles/create.php [L,QSA]
+
+# Handle GET to /api/bubbles (both with and without trailing slash) - explicitly route to index.php
+RewriteCond %{REQUEST_METHOD} GET
+RewriteRule ^api/bubbles/?$ api/bubbles/index.php [L,QSA]
+
+# Handle other POST endpoints (generic)
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteCond %{REQUEST_METHOD} POST
 RewriteRule ^api/([^/]+)/?$ api/$1/create.php [L,QSA]
 
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteCond %{REQUEST_METHOD} PUT
-RewriteRule ^api/([^/]+)/([0-9]+)/?$ api/$1/update.php?id=$2 [L,QSA]
+# PUT method removed - using action endpoints instead
 
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
