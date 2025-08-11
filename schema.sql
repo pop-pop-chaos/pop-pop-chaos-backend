@@ -55,12 +55,16 @@ CREATE TABLE bubbles (
   velocity_dx DECIMAL(8,6) NOT NULL DEFAULT 0.0,  -- X velocity component
   velocity_dy DECIMAL(8,6) NOT NULL DEFAULT 0.0,  -- Y velocity component
   team_id INT NOT NULL DEFAULT 1,
+  deflation_rate DECIMAL(4,2) NOT NULL DEFAULT 1.0,  -- Size lost per second (0.8-1.5 range)
+  last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,  -- Last interaction timestamp
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
   FOREIGN KEY (team_id) REFERENCES teams(team_id),
   INDEX idx_size (size),
-  INDEX idx_position (position_x, position_y)
+  INDEX idx_position (position_x, position_y),
+  INDEX idx_last_activity (last_activity),
+  INDEX idx_deflation_rate (deflation_rate)
 );
 
 -- Game sessions table (for future multiplayer features)
@@ -76,7 +80,7 @@ CREATE TABLE game_sessions (
 CREATE TABLE bubble_events (
   event_id INT PRIMARY KEY AUTO_INCREMENT,
   bubble_id INT,
-  event_type ENUM('created', 'clicked', 'air_loss', 'popped', 'god_inflate', 'god_deflate', 'god_pop'),
+  event_type ENUM('created', 'clicked', 'air_loss', 'popped', 'god_inflate', 'god_deflate', 'god_pop', 'auto_deflate', 'deflation_update'),
   size_before INT,
   size_after INT,
   player_ip VARCHAR(45),  -- For basic player tracking

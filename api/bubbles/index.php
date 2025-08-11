@@ -40,6 +40,7 @@ function getBubbles() {
             SELECT b.bubble_id as id, b.name, b.size,
                    b.position_x as xPercent, b.position_y as yPercent,
                    b.velocity_dx as dx, b.velocity_dy as dy,
+                   b.deflation_rate, b.last_activity,
                    t.team_id as teamId, t.name as team, c.hex_code as color
             FROM bubbles b
             JOIN teams t ON b.team_id = t.team_id
@@ -51,16 +52,27 @@ function getBubbles() {
 
         foreach ($bubbles as &$bubble) {
             $bubble['id'] = (int)$bubble['id'];
-            $bubble['size'] = (int)$bubble['size'];
             $bubble['teamId'] = (int)$bubble['teamId'];
             $bubble['xPercent'] = (float)$bubble['xPercent'];
             $bubble['yPercent'] = (float)$bubble['yPercent'];
             $bubble['dx'] = (float)$bubble['dx'];
             $bubble['dy'] = (float)$bubble['dy'];
+            $bubble['deflation_rate'] = (float)$bubble['deflation_rate'];
+
+            // Calculate current deflated size
+            $bubble['size'] = calculateCurrentBubbleSize($bubble);
         }
 
+        // Remove bubbles that have deflated to 0 or less
+        $bubbles = array_filter($bubbles, function($bubble) {
+            return $bubble['size'] > 0;
+        });
+
+        // Clean up deflated bubbles from database
+        cleanupDeflatedBubbles();
+
         echo json_encode([
-            'bubbles' => $bubbles,
+            'bubbles' => array_values($bubbles), // Re-index array after filtering
             'timestamp' => date('c')
         ]);
     } catch (PDOException $e) {
@@ -86,12 +98,15 @@ function createBubble() {
         $nextId = $stmt->fetch(PDO::FETCH_ASSOC)['next_id'];
 
         $stmt = $pdo->prepare("
-            INSERT INTO bubbles (bubble_id, name, position_x, position_y, size, team_id)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO bubbles (bubble_id, name, position_x, position_y, size, team_id, deflation_rate, last_activity)
+            VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
         ");
 
         $teamId = $input['teamId'] ?? 1;
         $size = $input['size'] ?? 10;
+
+        // Generate random deflation rate between 0.8 and 1.5
+        $deflationRate = 0.8 + (mt_rand(0, 70) / 100.0); // 0.8 to 1.5
 
         $stmt->execute([
             $nextId,
@@ -99,7 +114,8 @@ function createBubble() {
             $input['xPercent'],
             $input['yPercent'],
             $size,
-            $teamId
+            $teamId,
+            $deflationRate
         ]);
 
         logBubbleEvent($nextId, 'created', 0, $size);
@@ -167,6 +183,8 @@ function updateBubble() {
             return;
         }
 
+        // Always update last_activity when bubble is modified
+        $fields[] = 'last_activity = NOW()';
         $values[] = $input['id'];
 
         $sql = "UPDATE bubbles SET " . implode(', ', $fields) . " WHERE bubble_id = ?";
@@ -245,6 +263,52 @@ function logBubbleEvent($bubbleId, $eventType, $sizeBefore, $sizeAfter) {
         ]);
     } catch (PDOException $e) {
         error_log("Failed to log bubble event: " . $e->getMessage());
+    }
+}
+
+function calculateCurrentBubbleSize($bubble) {
+    $baseSize = (int)$bubble['size'];
+    $deflationRate = (float)$bubble['deflation_rate'];
+    $lastActivity = new DateTime($bubble['last_activity']);
+    $now = new DateTime();
+    $secondsElapsed = $now->getTimestamp() - $lastActivity->getTimestamp();
+
+    // Calculate current size based on deflation rate
+    $currentSize = max(0, $baseSize - ($secondsElapsed * $deflationRate));
+
+    return (int)round($currentSize);
+}
+
+function cleanupDeflatedBubbles() {
+    global $pdo;
+
+    try {
+        // Find bubbles that have fully deflated
+        $stmt = $pdo->prepare("
+            SELECT bubble_id, size, deflation_rate, last_activity, name
+            FROM bubbles
+            WHERE size - (TIMESTAMPDIFF(SECOND, last_activity, NOW()) * deflation_rate) <= 0
+        ");
+        $stmt->execute();
+        $deflatedBubbles = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Log and delete deflated bubbles
+        foreach ($deflatedBubbles as $bubble) {
+            logBubbleEvent($bubble['bubble_id'], 'auto_deflate', $bubble['size'], 0);
+        }
+
+        // Delete all fully deflated bubbles
+        if (!empty($deflatedBubbles)) {
+            $bubbleIds = array_column($deflatedBubbles, 'bubble_id');
+            $placeholders = str_repeat('?,', count($bubbleIds) - 1) . '?';
+            $stmt = $pdo->prepare("DELETE FROM bubbles WHERE bubble_id IN ($placeholders)");
+            $stmt->execute($bubbleIds);
+
+            error_log("Auto-deflated " . count($deflatedBubbles) . " bubbles");
+        }
+
+    } catch (PDOException $e) {
+        error_log("Failed to cleanup deflated bubbles: " . $e->getMessage());
     }
 }
 ?>

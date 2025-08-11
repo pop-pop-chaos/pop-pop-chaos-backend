@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Auto-Deflate Trigger</title>
+    <meta name="robots" content="noindex">
+</head>
+<body>
+    <h2>Auto-Deflate Status</h2>
+    <div id="status">Starting...</div>
+    <div id="log"></div>
+
+    <script>
+        let intervalId;
+        let isRunning = false;
+
+        async function runAutoDeflate() {
+            try {
+                const response = await fetch('auto_deflate_cron.php', {
+                    method: 'GET',
+                    cache: 'no-cache'
+                });
+
+                const result = await response.json();
+
+                const timestamp = new Date().toLocaleTimeString();
+                const logEntry = `[${timestamp}] ${result.message || result.error}`;
+
+                document.getElementById('status').innerHTML =
+                    result.success ?
+                    `✅ Running (Updated: ${result.updated_bubbles}, Deleted: ${result.deleted_bubbles})` :
+                    `❌ Error: ${result.error}`;
+
+                // Add to log (keep last 10 entries)
+                const logDiv = document.getElementById('log');
+                const logLine = document.createElement('div');
+                logLine.textContent = logEntry;
+                logLine.style.color = result.success ? 'green' : 'red';
+                logDiv.insertBefore(logLine, logDiv.firstChild);
+
+                // Keep only last 10 log entries
+                while (logDiv.children.length > 10) {
+                    logDiv.removeChild(logDiv.lastChild);
+                }
+
+            } catch (error) {
+                document.getElementById('status').innerHTML = `❌ Connection error: ${error.message}`;
+                console.error('Auto-deflate error:', error);
+            }
+        }
+
+        // Run immediately and then every 30 seconds
+        runAutoDeflate();
+        intervalId = setInterval(runAutoDeflate, 30000); // 30 seconds
+
+        console.log('Auto-deflate trigger started (runs every 30 seconds)');
+    </script>
+
+    <style>
+        body { font-family: monospace; padding: 20px; }
+        #status { font-size: 18px; margin: 10px 0; }
+        #log { margin-top: 20px; font-size: 12px; }
+        #log div { margin: 2px 0; }
+    </style>
+</body>
+</html>

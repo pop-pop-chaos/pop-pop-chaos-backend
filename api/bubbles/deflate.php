@@ -55,7 +55,7 @@ try {
             'message' => 'Bubble popped from deflation'
         ]);
     } else {
-        $stmt = $pdo->prepare("UPDATE bubbles SET size = ? WHERE bubble_id = ?");
+        $stmt = $pdo->prepare("UPDATE bubbles SET size = ?, last_activity = NOW() WHERE bubble_id = ?");
         $stmt->execute([$newSize, $bubbleId]);
 
         logBubbleEvent($bubbleId, $action, $currentSize, $newSize);
