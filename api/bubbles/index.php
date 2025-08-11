@@ -47,6 +47,9 @@ function getBubbles() {
         $stmt->execute();
         $bubbles = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+        $updateStmt = $pdo->prepare("UPDATE bubbles SET size = ? WHERE bubble_id = ?");
+        $updatedBubbles = [];
+
         foreach ($bubbles as &$bubble) {
             $bubble['id'] = (int)$bubble['id'];
             $bubble['teamId'] = (int)$bubble['teamId'];
@@ -56,8 +59,22 @@ function getBubbles() {
             $bubble['dy'] = (float)$bubble['dy'];
             $bubble['deflation_rate'] = (float)$bubble['deflation_rate'];
 
-            // Calculate current deflated size
-            $bubble['size'] = calculateCurrentBubbleSize($bubble);
+            $originalSize = (int)$bubble['size'];
+            $currentSize = calculateCurrentBubbleSize($bubble);
+
+            // Update database if size has changed due to deflation
+            if ($currentSize !== $originalSize) {
+                $updateStmt->execute([$currentSize, $bubble['id']]);
+                logBubbleEvent($bubble['id'], 'deflation_update', $originalSize, $currentSize);
+                $updatedBubbles[] = $bubble['name'] . " ({$originalSize} → {$currentSize})";
+            }
+
+            $bubble['size'] = $currentSize;
+        }
+
+        // Log updates for debugging
+        if (!empty($updatedBubbles)) {
+            error_log("getBubbles() updated sizes: " . implode(', ', $updatedBubbles));
         }
 
         // Remove bubbles that have deflated to 0 or less
