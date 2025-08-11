@@ -49,13 +49,13 @@ CREATE TABLE users (
 CREATE TABLE bubbles (
   bubble_id INT PRIMARY KEY,  -- Use our existing ID system
   name VARCHAR(100) NOT NULL,
+  team_id INT NOT NULL DEFAULT 1,
   size INT NOT NULL DEFAULT 10,
+  deflation_rate DECIMAL(5,4) NOT NULL DEFAULT 1.0  COMMENT 'Size lost per second (0.04-0.067 range)',
   position_x DECIMAL(8,3) NOT NULL,  -- Store as percentage of game area (0.0-1.0)
   position_y DECIMAL(8,3) NOT NULL,  -- This makes it screen-size independent!
   velocity_dx DECIMAL(8,6) NOT NULL DEFAULT 0.0,  -- X velocity component
   velocity_dy DECIMAL(8,6) NOT NULL DEFAULT 0.0,  -- Y velocity component
-  team_id INT NOT NULL DEFAULT 1,
-  deflation_rate DECIMAL(4,2) NOT NULL DEFAULT 1.0,  -- Size lost per second (0.8-1.5 range)
   last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,  -- Last interaction timestamp
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

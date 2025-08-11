@@ -39,8 +39,8 @@ try {
     $teamId = $input['teamId'] ?? mt_rand(1, 5);
     $size = $input['size'] ?? 120;
 
-    // Generate random deflation rate between 0.8 and 1.5
-    $deflationRate = round(0.8 + (mt_rand(0, 700) / 1000.0), 2); // 0.8 to 1.5 with better precision
+    // Generate random deflation rate between 0.04 and 0.067 (equivalent to -1 every 15-25 seconds)
+    $deflationRate = round(0.04 + (mt_rand(0, 27) / 1000.0), 4); // 0.04 to 0.067 with 4 decimal precision
 
     // Debug logging
     error_log("Creating bubble with deflation_rate: " . $deflationRate . ", teamId: " . $teamId);

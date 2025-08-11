@@ -2,7 +2,7 @@
 -- Add deflation_rate and last_activity columns to bubbles table
 
 ALTER TABLE bubbles
-ADD COLUMN deflation_rate DECIMAL(4,2) NOT NULL DEFAULT 1.0 COMMENT 'Size lost per second (0.8-1.5 range)',
+ADD COLUMN deflation_rate DECIMAL(5,4) NOT NULL DEFAULT 1.0 COMMENT 'Size lost per second (0.04-0.067 range)',
 ADD COLUMN last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT 'Last time bubble was interacted with';
 
 -- Update existing bubbles with random deflation rates
