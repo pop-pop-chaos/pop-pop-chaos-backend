@@ -17,9 +17,6 @@ switch ($method) {
     case 'GET':
         getBubbles();
         break;
-    case 'POST':
-        createBubble();
-        break;
     case 'PUT':
         updateBubble();
         break;
@@ -28,7 +25,7 @@ switch ($method) {
         break;
     default:
         http_response_code(405);
-        echo json_encode(['error' => 'Method not allowed']);
+        echo json_encode(['error' => 'Method not allowed - POST requests go to create.php']);
         break;
 }
 
@@ -74,56 +71,6 @@ function getBubbles() {
         echo json_encode([
             'bubbles' => array_values($bubbles), // Re-index array after filtering
             'timestamp' => date('c')
-        ]);
-    } catch (PDOException $e) {
-        http_response_code(500);
-        echo json_encode(['error' => 'Database error: ' . $e->getMessage()]);
-    }
-}
-
-function createBubble() {
-    global $pdo;
-
-    $input = json_decode(file_get_contents('php://input'), true);
-
-    if (!isset($input['name']) || !isset($input['xPercent']) || !isset($input['yPercent'])) {
-        http_response_code(400);
-        echo json_encode(['error' => 'Missing required fields']);
-        return;
-    }
-
-    try {
-        $stmt = $pdo->prepare("SELECT COALESCE(MAX(bubble_id), 0) + 1 as next_id FROM bubbles");
-        $stmt->execute();
-        $nextId = $stmt->fetch(PDO::FETCH_ASSOC)['next_id'];
-
-        $stmt = $pdo->prepare("
-            INSERT INTO bubbles (bubble_id, name, position_x, position_y, size, team_id, deflation_rate, last_activity)
-            VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
-        ");
-
-        $teamId = $input['teamId'] ?? 1;
-        $size = $input['size'] ?? 10;
-
-        // Generate random deflation rate between 0.8 and 1.5
-        $deflationRate = 0.8 + (mt_rand(0, 70) / 100.0); // 0.8 to 1.5
-
-        $stmt->execute([
-            $nextId,
-            $input['name'],
-            $input['xPercent'],
-            $input['yPercent'],
-            $size,
-            $teamId,
-            $deflationRate
-        ]);
-
-        logBubbleEvent($nextId, 'created', 0, $size);
-
-        echo json_encode([
-            'success' => true,
-            'bubble_id' => $nextId,
-            'message' => 'Bubble created successfully'
         ]);
     } catch (PDOException $e) {
         http_response_code(500);

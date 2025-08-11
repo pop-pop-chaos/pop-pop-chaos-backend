@@ -31,12 +31,19 @@ try {
     $nextId = $stmt->fetch(PDO::FETCH_ASSOC)['next_id'];
 
     $stmt = $pdo->prepare("
-        INSERT INTO bubbles (bubble_id, name, position_x, position_y, size, team_id)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO bubbles (bubble_id, name, position_x, position_y, size, team_id, deflation_rate, last_activity)
+        VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
     ");
 
-    $teamId = $input['teamId'] ?? 1;
+    // Assign random team (1-5)
+    $teamId = $input['teamId'] ?? mt_rand(1, 5);
     $size = $input['size'] ?? 120;
+
+    // Generate random deflation rate between 0.8 and 1.5
+    $deflationRate = round(0.8 + (mt_rand(0, 700) / 1000.0), 2); // 0.8 to 1.5 with better precision
+
+    // Debug logging
+    error_log("Creating bubble with deflation_rate: " . $deflationRate . ", teamId: " . $teamId);
 
     $stmt->execute([
         $nextId,
@@ -44,7 +51,8 @@ try {
         $input['xPercent'],
         $input['yPercent'],
         $size,
-        $teamId
+        $teamId,
+        $deflationRate
     ]);
 
     logBubbleEvent($nextId, 'created', 0, $size);
@@ -52,7 +60,7 @@ try {
     $stmt = $pdo->prepare("
         SELECT b.bubble_id as id, b.name, b.size,
                b.position_x as xPercent, b.position_y as yPercent,
-               b.velocity_dx as dx, b.velocity_dy as dy,
+               b.velocity_dx as dx, b.velocity_dy as dy, b.deflation_rate,
                t.team_id as teamId, t.name as team, c.hex_code as color
         FROM bubbles b
         JOIN teams t ON b.team_id = t.team_id
@@ -69,6 +77,14 @@ try {
     $bubble['yPercent'] = (float)$bubble['yPercent'];
     $bubble['dx'] = (float)$bubble['dx'];
     $bubble['dy'] = (float)$bubble['dy'];
+    $bubble['deflation_rate'] = (float)$bubble['deflation_rate'];
+
+    // Add debug info to response
+    $bubble['debug_info'] = [
+        'generated_deflation_rate' => $deflationRate,
+        'assigned_team_id' => $teamId,
+        'timestamp' => date('Y-m-d H:i:s')
+    ];
 
     echo json_encode($bubble);
 } catch (PDOException $e) {
